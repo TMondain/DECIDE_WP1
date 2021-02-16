@@ -1,0 +1,199 @@
+---
+title: "Exploring butterfly data"
+author: "Thomas MM"
+date: "30/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+
+```{r, include=FALSE, echo = F}
+
+library(readr)
+library(BRCmap)
+library(tidyverse)
+library(lubridate)
+library(raster)
+library(lme4)
+
+
+# get list of files
+f <- list.files("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards", full.names = T)
+
+# read subset of NBN data to test 2000 - 2010
+b00 <- read_csv(f[1])#, n_max = 1000000)
+b10 <- read_csv(f[2])
+
+b00 <- rbind(b00, b10)
+
+# get species codes
+l_n <- read_csv(f[3])
+
+# get UK polygon
+world.shp <- readOGR("Data/worldmap.geojson", verbose = F)
+uk <- world.shp %>% raster::crop(., extent(-9, 2, 48, 62)) %>% fortify
+
+```
+
+
+Full dataset with records between 2001 and 2017 inclusive.
+
+
+```{r, include = T}
+
+head(b00)
+# head(l_n)
+
+```
+
+
+Look at the number of sightings reported at each precision level
+
+```{r}
+
+# covert grid to lat lon,
+# does this work for N ireland and jersey etc? not sure...
+ll <- gr2gps_latlon(b00$TO_GRIDREF)
+
+# check number of records per precision level
+b00 %>% group_by(TO_PRECISION, yr = year(dmy(TO_STARTDATE))) %>% 
+  tally() %>% 
+  ggplot(aes(x = TO_PRECISION, y = n, colour = (factor(yr)))) +
+  geom_point() +
+  # geom_boxplot(aes(group = TO_PRECISION)) +
+  xlab("Precision (m)") + ylab("sightings")
+
+
+```
+
+Only use sightings reported on the same day (i.e. not stuff that's recorded over a few days or years) and only use 100m precision data. Output a list of the species in the dataset.
+
+```{r, echo = T}
+
+b002 <- subset(cbind(b00, ll), DT_ID == 1  & 
+                 TO_PRECISION == 100) %>% 
+  mutate(lon = LONGITUDE, 
+         lat = LATITUDE,
+         date = dmy(TO_STARTDATE),
+         yr = year(date),
+         jd = yday(date),
+         sp_n = l_n$NAME[match(CONCEPT, l_n$CONCEPT)],
+         com_n = l_n$NAME_ENGLISH[match(CONCEPT, l_n$CONCEPT)],
+         ig = l_n$INFORMAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates
+
+unique(b002$sp_n)
+
+```
+
+(number of sightings dropped because of precision = `r dim(b00)[1] - dim(b002)[1]`)
+
+
+Have a look at the number of sightings over time and the total number of sightings for each species
+
+```{r}
+
+## number of sightings over time
+# b002 %>% group_by(yr) %>% 
+#   tally() %>% 
+#   ggplot(aes(x = factor(yr), y = n)) +
+#   geom_point()
+
+ggplot(b002,aes(x = yr)) + 
+  geom_bar()
+
+# number of recordings of each species
+b002 %>% group_by(sp_n, yr) %>% tally() %>% ungroup() %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n, colour = factor(yr))) +
+  geom_point() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("species") + ylab("number of sightings")
+
+
+b002 %>% group_by(sp_n, com_n, yr) %>% tally() %>% 
+  pivot_wider(names_from = yr, values_from = n, id_cols = c(sp_n, com_n)) %>% 
+  rename(species = sp_n, common_name = com_n) #%>% 
+  # write.csv(file = "Data/species_number_yr.csv")
+
+b002 %>% group_by(yr) %>% tally(name = "number of sightings")
+
+```
+
+
+
+Do the number of sightings of each species change over time (first plot)?
+
+And proportionally to each other (second plot)?
+
+```{r}
+
+# head(b002)
+b002 %>% group_by(sp_n, yr) %>% 
+  tally() %>% 
+  ggplot(aes(x = yr, y = n, colour = sp_n)) +
+  geom_line() +
+  ylab('number of sightings by species') +
+  theme(legend.position = 'none')
+
+b002 %>% group_by(sp_n, yr) %>% 
+  tally() %>% 
+  ggplot(aes(x = yr, y = n, fill = sp_n)) +
+  geom_bar(position="fill", stat="identity") +
+  ylab('proportion of total sightings by species with duplicates') +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+
+```
+
+
+Are there duplicates in the dataset and where are they located (in time and space)?
+
+
+```{r}
+
+b002[duplicated(b002$id),] %>% 
+  group_by(yr, sp_n, com_n) %>% tally() %>% 
+  pivot_wider(names_from = yr, values_from = n, id_cols = c(sp_n, com_n)) #%>% 
+  # write.csv(file = "Data/duplicates_species_yr.csv")
+
+b002[duplicated(b002$id),] %>% 
+  ggplot(aes(x=lon, y = lat)) +
+  geom_polygon(data = uk, aes(x = long, y = lat, group = group),
+               fill = NA, colour = "black", size = 0.1) +
+  coord_map("mercator") +
+  geom_point(size = 0.1) +
+  theme_bw()
+
+b002_nd <- (b002[!duplicated(b002$id),])
+
+# write.csv(b002_nd, file = "Data/BNM_NRMS_No_Duplicates.csv")
+
+
+b002_nd %>% group_by(sp_n, yr) %>% 
+  tally() %>% 
+  ggplot(aes(x = yr, y = n, colour = sp_n)) +
+  geom_line() +
+  ylab('number of sightings by species without duplicates') +
+  xlab("year. Figure 2") +
+  theme(legend.position = 'none')
+
+b002_nd %>% #group_by(yr) %>% 
+  # tally() %>% 
+  ggplot(aes(x = yr)) + 
+  geom_bar()
+
+```
+
+There are `r length(b002$id[duplicated(b002$id)])` duplicates of the same species reported at the same lat/lon (100m resolution) on the same date.
+
+If we remove all the duplicates, we are left with a dataset of `r dim(b002_nd)[1]`. The figures of changes in the number of sightings by species over time with and without duplicates are pretty much identical, so I don't think that we need to worry too much about massive changes in the data if we remove them. Of course, this is likely to depend on how common the species of interest is. A very rare species might have more duplicates because there are lots of people that want to see them (is there an equivalent in the insect world of "twitching"?). This might be paritcularly problematic if they're only "observable" at a particular time of the year and so people are likely to go and try to see them on the same day.
+
+I think that going forward we will need to review how many duplicates there are on a species by species basis, just to make sure that we aren't removing too much data (although if we don't remove them then will there be pseudoreplication and all the associated problems?).
+

@@ -1,0 +1,159 @@
+---
+title: "Linear program to find priority regions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(lpSolve)
+library(raster)
+library(sf)
+library(rgeos)
+
+```
+
+## Load in a GAM output and its SE
+
+```{r gam}
+
+load(list.files("C:/Users/thoval/Documents/Analyses/gam_outs", full.names = T)[1])
+load(list.files("C:/Users/thoval/Documents/Analyses/gam_outs", full.names = T)[2])
+
+ag <- out$Predictions
+agse <- se_out_gam
+
+plot(ag)
+plot(agse)
+
+```
+
+## crop to smaller area based on location of individual
+
+First the filer distance function from wp 2
+
+```{r df}
+
+## function start
+filter_distance <- function(raster, 
+                            location = c(-1.110557, 51.602436), # has to be c(long, lat) as input
+                            method = c('buffer', 'travel'),
+                            distance = 20000){ # distance willing to go in metres
+  
+  if(method == 'buffer'){
+    
+    # first need to convert long lat to BNG
+    dat_sf <- st_sf(st_sfc(st_point(location)), crs = 4326) # load location points, convert to spatial lat/lon
+    trans_loc <- st_transform(dat_sf, crs = 27700) # transform to BNG
+    buffed <- st_buffer(trans_loc, distance) # create a buffer around the point
+    
+    # show where the buffered zone is 
+    # par(mfrow = c(1,2))
+    # plot(raster)
+    # plot(buffed, add = T)
+    
+    # extract the masked extent
+    c_buf <- crop(raster, buffed) # crop the raster - creates a square extent 
+    masked_area <- mask(c_buf, buffed)
+    # plot(masked_area) # then mask it to get only the area within the 'travel distance'
+    # par(mfrow = c(1,1))
+    
+  }
+  
+  return(masked_area) # return only the masked region x distance from the 'location'
+  
+}
+
+
+
+```
+
+
+```{r crop}
+
+location = c(-2.5, 54)
+
+a <- filter_distance(raster = ag,
+                location = location,
+                distance = 2000)
+ase <- filter_distance(raster = agse,
+                location = location,
+                distance = 2000)
+
+
+plot(a, main = "preds")
+plot(ase, main = "se")
+
+```
+
+
+# convert to data frame
+
+```{r df}
+
+a_df <- as.data.frame(a, xy = T, na.rm = T)
+ase_df <-  as.data.frame(ase, xy = T, na.rm = T)
+colnames(a_df) <- c("lon", "lat", "prob")
+colnames(ase_df) <- c("lon", "lat", "error")
+
+lp_df <- cbind(a_df, error = ase_df$error)
+head(lp_df)
+
+```
+
+# Calculate distance from a point
+
+Need to calculate a distance from an individual to decide what region to visit.
+
+```{r dist}
+
+location
+
+dat_sf <- (st_sfc(st_multipoint(t(replicate(location, n = dim(lp_df)[1]))), crs = 4326)) # load location points, convert to spatial lat/lon
+trans_loc <- st_transform(dat_sf, crs = 27700) # transform to BNG
+trans_loc
+
+st_sfc(st_point(location), crs = 4326)
+
+?st_sfc
+?st_sf
+
+dat_sf2 <- st_sfc(st_multipoint(as.matrix(lp_df[,1:2])), crs = 27700) # load location points, convert to spatial lat/lon
+plot(dat_sf2)
+
+st_as_sf(dat_sf2) 
+dist_df <- st_distance(x = dat_sf2, by_element = F)
+dist_df
+
+?replicate
+dat_sf2[1]
+(trans_loc)
+
+?st_distance
+
+```
+
+
+```{r lp}
+
+library(plotly)
+
+
+lpd <- cbind(lp_df, dist = rpois(dim(lp_df)[1], lambda = 400))
+
+plot_ly(x= lpd$prob, y = lpd$error, z = lpd$dist, colour = lpd$dist, type="scatter3d", mode="markers")
+
+
+?lp
+
+t_lp <- lp(direction = "max",
+   objective.in = lpd$dist,
+   const.mat = rbind(lpd$prob, lpd$prob, lpd$error, lpd$error),
+   const.rhs = c(">=", "<=", ">=", "<="),
+   c(0.5, 1, 0, 1))
+
+
+dim(rbind(lpd$prob, lpd$prob, lpd$error, lpd$error))
+      
+```

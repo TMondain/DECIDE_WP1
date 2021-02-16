@@ -1,3 +1,11 @@
+# extra stuff
+data/
+outputs/
+writing/
+
+**scripts/old_scripts/
+**scripts/lotus/
+
 # History files
 .Rhistory
 .Rapp.history

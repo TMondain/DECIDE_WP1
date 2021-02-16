@@ -1,0 +1,539 @@
+---
+title: "Testing effects of prevalence and duplicates"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+
+library(readr)
+library(tidyverse)
+library(raster)
+library(foreach)
+library(doParallel)
+# library(snow)
+library(dismo)
+library(randomForest)
+# library(rfinterval)
+library(BRCmap)
+library(mgcv)
+source('C:/Users/thoval/Documents/Analyses/Edited_Rob_Functions.R')
+
+```
+
+
+Currently, our models for low prevalence species are unlikely to be very good because the mdoels are very overfitted. One way of dealing with the low abundance of certain species is by taking prevalence of a species across the entire dataset into account when deciding on the number of pseudoabsences to generate. To do this, while still accounting for sampling biases, we take the number of unique grid references that a species has been seen in and the number of unique grid references across the whole dataset. We then use the proportion of cells that a species of interest appears in to determine how many more pseudoabsences are generated. I.e. if a species is seen in 20% of cells, then we need to have 5x more pseudoabsences than presences. This should mean that the probablility of a species being present in any given location decreases, because they appear <50% of the time in the original dataset, and hopefully lead to more realistic models of presence. I am not sure how this works with random forest models because it is likely that they will then be trained to recognise more 'absences' than 'presences' which could lead to them only predicting absences.
+
+In order to account for prevalence we're going to need to reduce the data to only presence and absence points in each grid cell. At the moment, the data we are using has multiple sightings of species in the same grid cell if they are seen on different days of the year (we have only removed repeat sightings from the same day in the same grid cell). If we increase the number of pseudoabsences relative to the number of repeat sightings, we're going to end up with a hyper-inflated number of absence points for certain species, e.g. species that are common in a very restricted area. If we do want to use prevalence and the repeat sightings data then there might be a way to scale numbers according to how many sightings have appeared in the dataset as well as by their prevalence.
+
+So, I am going to run four logistic regression models for each species: 
+
+1) duplicated data with equal numbers of presence and absence points ('original way')
+
+2) duplicated data with pseudoabsences scaled according to prevalence ('original + prevalence')
+    + I don't actually run this model because it takes too long and crashes my computer. I explain below why this isn't the best method anyway.
+
+3) thinned data matched presence and absence ('thinned + matched')
+
+4) thinned data with pseudoabsences scaled according to prevalence ('thinned + prevalence')
+
+
+
+## environmental data
+
+
+```{r edata, echo = F, warning=F}
+
+ed <- raster::stack('C:/Users/thoval/Documents/Analyses/Data/lcm_had_elev_national_grid.gri')
+names(ed)
+
+## big problem with slope and aspect!!!
+ed <- dropLayer(ed, i = match(c("slope", "aspect"), names(ed)))
+
+slope <- terrain(ed[[42]], opt = "slope", unit = "degrees")
+aspect <- terrain(ed[[42]], opt = "aspect", unit = "degrees")
+
+ed <- raster::stack(ed, slope, aspect)
+
+plot(ed[[42]], main = names(ed[[42]]))
+
+# whichVars <- usdm::vifcor(ed[[26:41]], th = 0.7)
+# whichVars
+# 
+# 
+# hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
+# ht <- hbv_y
+
+```
+
+## Crop and drop correlated variables
+
+Get an area of interest and drop correlated weather variables (display the ones that are kept). Limiting it to a northern-ish part of England.
+
+```{r AOI, echo = F, warning=F}
+
+ext_h <- extent(matrix(c(-4,53, 0.2,54.5), ncol = 2))
+e <- as(ext_h, "SpatialPolygons")
+sp::proj4string(e) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+e.geo <- sp::spTransform(e, CRS("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs"))
+
+hbv_y <- raster::crop(ed, e.geo)
+
+# exclude variables with >0.7 correlation
+whichVars <- usdm::vifcor(hbv_y[[26:41]], th = 0.7)
+whichVars
+
+
+hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
+ht <- hbv_y
+# plot(hbv_y)
+names(ht)
+plot(ht[[1]], main = names(ht[[1]]))
+
+```
+
+
+## Selecting subset of data
+
+Plot number of data points in the whole of the UK and for the region of interest that I've chosen. Can see that *Tyria jacobaeae* is the most recorded species at both extents.
+
+
+```{r dayflierMoths, echo = F, warning=F, message = F, }
+
+dfm_df <- read_csv("C:/Users/thoval/Documents/Analyses/DayFlyingMoths.csv")
+head(dfm_df)
+unique(duplicated(dfm_df$id)) # duplicates of same species/location/day have been removed
+
+# get eastings and northings
+dfm_df <- c_en(dfm_df)
+
+dfm_df %>% group_by(sp_n) %>% tally %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 50, hjust=1)) +
+  xlab("species") + ggtitle("All UK") +
+  ylab("Number of sightings")
+
+sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
+                 lon > -3.9 & lon < 0.2) %>% 
+  mutate(species = sp_n,
+         year = yr)
+
+sp_y %>% group_by(sp_n) %>% tally %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 50, hjust=1)) +
+  xlab("species") + ggtitle("Subset UK, 53.1 < latitude <= 54.4") +
+  ylab("Number of sightings")
+
+
+# as a hack to not have to create a new function for east and north
+# create a data frame that has East and north renamed as lon lat
+ndf <- sp_y %>% mutate(lon = EASTING,
+                       lat = NORTHING) %>% 
+  dplyr::select(-EASTING, -NORTHING)
+
+
+```
+
+
+## Thinning records
+
+Alter the records of presences to get only unique locations of any given species in the data.
+
+
+```{r thinning_data, message = FALSE}
+
+thinned_occ <- ndf %>% dplyr::select(lon, lat, sp_n, TO_GRIDREF) %>%  
+  group_by(sp_n, TO_GRIDREF) %>% 
+  distinct() %>% 
+  mutate(species = sp_n,
+         year = 2015) # need a year column for Rob's function to work, just a dummy year
+
+```
+
+
+## Calculating prevalence 
+
+Calculate prevalence of each species to use in selecting the number of pseudoabsences. First, get number of unique grid cells for each species and the number of records for each species. Second, get the prevalence by dividing the number of unique cells the each species appears in by the number of unique cells across all species (i.e. the total number of cells sampled). Third, remove all duplicate values so have one species per row. Fourth, calculate the number of pseudo absences needed for the duplicated data and the thinned data by dividing the number of cells/records by the percentage prevalence (to get the value of 1%) `n_records / prev * 100` and multiplying it by the percentage of cells that the species wasn't in `(1-prev) * 100`. 
+
+
+```{r prevalence}
+
+# length(unique(sp_y$TO_GRIDREF))
+
+sp_y_prev <- sp_y %>% group_by(sp_n) %>% 
+  mutate(n_cells = length(unique(TO_GRIDREF)), # number unique locations
+         n_records = length(TO_GRIDREF)) %>%  # total number of records
+  ungroup() %>% 
+  mutate(prev = n_cells/length(unique(TO_GRIDREF))) %>% # get the prevalence
+  dplyr::select(sp_n, n_cells, n_records, prev) %>% # select only columns of interest
+  distinct() %>% # one row per species 
+  mutate(dup_rec_PA = round(n_records/(prev*100) *((1-prev)*100), 0), # calculate PA from duplicated records
+         thin_rec_PA = round(n_cells/(prev*100) *((1-prev)*100), 0)) # calculate PA from single records
+
+sp_y_prev$dup_rec_PA  <- ifelse(sp_y_prev$dup_rec_PA>6664, 6664, sp_y_prev$dup_rec_PA) # some PAs are to high for duplicated records
+
+head(arrange(sp_y_prev, -n_cells))
+
+```
+
+The code for getting pseudoabsences from duplicated data while accounting for prevalence generated an error when the number of pseudoabsences was too high for certain species. Therefore, I just reduced the number of pseudoabsences to the maximum number of records which was for *Tyria jacobaeae* at 6664. This is a quick and dirty way of doing it but as I outlined above, this method doesn't really make much sense in the grand scheme of things.
+
+I'm going to get the absences/pseudoabsences on all of the species but then run the logistic regression models on only a subset of species because the code seems to crash R all the time.
+
+## generate pseudoabsences and run models
+
+Now need to generate the four different pseudoabsence data frames and run the logistic regression models. Going to run the models immeadiately after the pseudoabsence generation. To speed things up, I am only going to run the models for a subset of 6 species (*Orgyia antiqua*, *Perizoma albulata*, *Tyria jacobaeae*, *Euclidia mi*, *Zygaena filipendulae*, *Chiasmia clathrata*). However, the pseudoabsences and prevalence are calculated using all species.
+
+### The 'original way'
+
+#### Pseudoabsences
+
+Full dataset (with duplicated records) and matched number of pseudoabsences.
+
+
+```{r presabs, echo = T}
+
+
+#### Create presence/absence
+spp <- unique(ndf$species) ## all species
+spp_sub <- c('Orgyia antiqua', 'Perizoma albulata', 'Tyria jacobaeae', 'Euclidia mi', 'Zygaena filipendulae', 'Chiasmia clathrata')
+
+# spp_sub %in% spp
+
+registerDoParallel(cores = detectCores() - 1)
+
+system.time( 
+  ab1 <- foreach(i = 1 : length(spp)) %dopar% {
+    
+    cpa(spdat = ndf, species = spp[i], matchPres = TRUE,
+        minYear = 2000, maxYear = 2017, recThresh = 5,
+        screenRaster = NULL)
+    
+  }
+)
+
+registerDoSEQ()
+
+names(ab1) <- spp
+
+
+# ab1 <- lapply(spp, FUN = function(x) cpa(spdat = ndf, species = x, matchPres = TRUE,
+#         minYear = 2000, maxYear = 2017, recThresh = 5))
+
+
+
+```
+
+#### LR model
+
+Takes ~2 mins to run with only 6 species.
+
+```{r LR_orig}
+
+
+# do all species in parallel to save time
+registerDoParallel(cores = detectCores() - 1)
+
+
+system.time(
+  lr_org <- foreach(s = 1:length(spp_sub), #.combine='comb', .multicombine=TRUE,
+                    # .init=list(list()), 
+                    .packages = c('tidyverse', 'raster', 'readr', 'dismo'),
+                    .errorhandling = 'pass') %dopar% {
+                      
+                      # print(paste(s, spp[s], sep = " "))
+                      
+                      if(is.null(ab1[s])){
+                        # print(paste("No data for species", spp[s]))
+                        next
+                      }
+                      
+                      sdm_lr <- fsdm(species = spp_sub[s], model = "lr", 
+                                     climDat = ht, spData = ab1, knots = -1,
+                                     k = 5,
+                                     prediction = T,
+                                     inters = F, 
+                                     write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+                      
+                      se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+                      # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+                      
+                      list(sdm_lr, se_out)
+                    }
+)
+
+registerDoSEQ()
+
+# lapply(spp_sub, FUN = function(x) {
+#   
+#   sdm_lr <- fsdm(species = x, model = "lr", 
+#                  climDat = ht, spData = ab1, knots = -1,
+#                  k = 5,
+#                  prediction = T,
+#                  inters = F, 
+#                  write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+#   se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+#   list(sdm_lr, se_out)
+# }
+# )
+
+
+```
+
+
+The output of this function is a bit odd as it has a list within another list. The first list is each separate species, and the second list is the output from the fsdm function [[1]] and the standard error [[2]]. Obviously, with models that do not have a standard error prediction there will be no entry in the second list.
+
+
+
+### 'original + prevalence`
+
+#### Pseudabsences
+
+The number of pseudoabsences are determined by multiplying the number of records by `1-prevalence*100` of a species, as described above.
+
+Generated pseudoabsences with the data containing duplicates of the same species found in the same cell over time doesn't make sense because for some species will get a hyper-inflated number of PA points (*e.g.* species that are quite common in a very restricted area). This takes too long and crashes the computer so I'm going to leave it for now but the code is ready. At some point I still intend to run it to see what difference it makes to the SDMs though.
+
+
+```{r pa_dups_prev, echo = F}
+
+# 
+# registerDoParallel(cores = detectCores() - 1)
+# 
+# system.time( 
+#   ab1_org_prev <- foreach(i = 1 : length(spp)) %dopar% {
+#     
+#     cpa(spdat = ndf, species = spp[i], matchPres = FALSE,
+#         nAbs = sp_y_prev$dup_rec_PA[sp_y_prev$sp_n == spp[i]], # use dup rec pa where species == i
+#         minYear = 2000, maxYear = 2017, recThresh = 5)
+#     
+#   }
+# )
+# 
+# registerDoSEQ()
+# 
+# names(ab1_org_prev) <- spp
+
+
+```
+
+
+#### LR model
+
+
+```{r LR_orig_prev, echo = F}
+
+# # do all species in parallel to save time
+# registerDoParallel(cores = detectCores() - 1)
+# 
+# names(ab1) <- spp
+# system.time(
+#   lr_org_prev <- foreach(s = 1:length(spp), #.combine='comb', .multicombine=TRUE,
+#                         # .init=list(list()), 
+#                         .packages = c('tidyverse', 'raster', 'readr', 'dismo'),
+#                         .errorhandling = 'pass') %dopar% {
+#                           
+#                           # print(paste(s, spp[s], sep = " "))
+#                           
+#                           if(is.null(ab1_org_prev[s])){
+#                             # print(paste("No data for species", spp[s]))
+#                             next
+#                           }
+#                           
+#                           sdm_lr <- fsdm(species = spp[s], model = "lr", 
+#                                          climDat = ht, spData = ab1_org_prev, knots = -1,
+#                                          k = 5,
+#                                          prediction = T,
+#                                          inters = F, 
+#                                          write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+#                           
+#                           se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+#                           # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+#                           
+#                           list(sdm_lr, se_out)
+#                         }
+# )
+# 
+# registerDoSEQ()
+
+
+```
+
+
+### 'Thinned + matched'
+
+#### Pseudoabsences
+
+Thinned data and equal number of presences and absences.
+
+```{r pa_thinned_match}
+
+registerDoParallel(cores = detectCores() - 1)
+
+system.time( 
+  ab1_thin_match <- foreach(i = 1 : length(spp)) %dopar% {
+    
+    cpa(spdat = thinned_occ, species = spp[i], matchPres = TRUE,
+        minYear = 2000, maxYear = 2017, recThresh = 5)
+    
+  }
+)
+
+registerDoSEQ()
+
+names(ab1_thin_match) <- spp
+
+```
+
+
+#### LR model
+
+
+```{r LR_thin_match}
+
+# do all species in parallel to save time
+registerDoParallel(cores = detectCores() - 1)
+
+
+system.time(
+  lr_thin_match <- foreach(s = 1:length(spp_sub), #.combine='comb', .multicombine=TRUE,
+                           # .init=list(list()), 
+                           .packages = c('tidyverse', 'raster', 'readr', 'dismo'),
+                           .errorhandling = 'pass') %dopar% {
+                             
+                             # print(paste(s, spp[s], sep = " "))
+                             
+                             if(is.null(ab1_thin_match[s])){
+                               # print(paste("No data for species", spp[s]))
+                               next
+                             }
+                             
+                             sdm_lr <- fsdm(species = spp_sub[s], model = c("lr", "rf"), 
+                                            climDat = ht, spData = ab1_thin_match, knots = -1,
+                                            k = 5,
+                                            prediction = T,
+                                            inters = F, 
+                                            write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+                             
+                             se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+                             # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+                             
+                             list(sdm_lr, se_out)
+                           }
+)
+
+registerDoSEQ()
+
+
+```
+
+
+### 'Thinned + prevalence'
+
+#### Pseudoabsences
+
+Thinned data and pseudoabsences are determined by multiplying the number of records by `(1-prevalence)*100` of a species.
+
+
+```{r pa_thinned_prev}
+
+registerDoParallel(cores = detectCores() - 1)
+
+system.time( 
+  ab1_thin_prev <- foreach(i = 1 : length(spp)) %dopar% {
+    
+    cpa(spdat = thinned_occ, species = spp[i], matchPres = FALSE,
+        nAbs = sp_y_prev$thin_rec_PA[sp_y_prev$sp_n == spp[i]],
+        minYear = 2000, maxYear = 2017, recThresh = 5)
+    
+  }
+)
+
+registerDoSEQ()
+
+names(ab1_thin_prev) <- spp
+
+```
+
+#### LR models
+
+```{r LR_thin_prev}
+
+# do all species in parallel to save time
+registerDoParallel(cores = detectCores() - 1)
+
+system.time(
+  lr_thin_prev <- foreach(s = 1:length(spp_sub), #.combine='comb', .multicombine=TRUE,
+                          # .init=list(list()), 
+                          .packages = c('tidyverse', 'raster', 'readr', 'dismo'),
+                          .errorhandling = 'pass') %dopar% {
+                            
+                            # print(paste(s, spp[s], sep = " "))
+                            
+                            if(is.null(ab1_thin_prev[s])){
+                              # print(paste("No data for species", spp[s]))
+                              next
+                            }
+                            
+                            sdm_lr <- fsdm(species = spp_sub[s], model = "lr", 
+                                           climDat = ht, spData = ab1_thin_prev, knots = -1,
+                                           k = 5,
+                                           prediction = T,
+                                           inters = F, 
+                                           write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+                            
+                            se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+                            # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+                            
+                            list(sdm_lr, se_out)
+                          }
+)
+
+registerDoSEQ()
+
+
+```
+
+
+## plotting the results
+
+plot the results for each of the species in the dataset.
+
+As you can see, thinning the data to only include presemce/absence points does affect the distributions (plots in the first column vs those in the second). Although the amount that it affects them and the direction it affects them in seems to differ between species (even with this very small subset of species). Thinning the data prior to running the model and choosing pseudoabsences based on prevalence has a drastic impact on the probability of presence. Increasing the number of pseudoabsences directly reduces the probability of occurrence. I think this is because it makes the model 'expect' the species to be less prevalent across the whole area of interest. This makes sense for some of the rarest species, as they are not expected to occur in 50% of cells. For some species, e.g. *Perizoma albulata*, this seems to make the model think that the species is unlikely to be present in any of the cells, even though it clearly is based on the raw data.
+
+
+
+```{r plots, fig.height=2.7, fig.width=10}
+
+par(mfrow = c(1,3))
+
+for(i in 1:length(lr_org)){
+  
+  plot(lr_org[[i]][[1]]$Predictions, main = paste(lr_org[[i]][[1]]$Species, 'Original way',sep="\n"))
+  points(x = lr_org[[i]][[1]]$Data$lon[lr_org[[i]][[1]]$Data$val == 1],
+         lr_org[[i]][[1]]$Data$lat[lr_org[[i]][[1]]$Data$val == 1],
+         cex = 0.6, col = "red", pch = 20)
+  
+  plot(lr_thin_match[[i]][[1]]$Predictions, main = paste(lr_thin_match[[i]][[1]]$Species, 'Thinned + matched',sep="\n"))
+  points(x = lr_org[[i]][[1]]$Data$lon[lr_org[[i]][[1]]$Data$val == 1],
+         lr_org[[i]][[1]]$Data$lat[lr_org[[i]][[1]]$Data$val == 1],
+         cex = 0.6, col = "red", pch = 20)
+  
+  plot(lr_thin_prev[[i]][[1]]$Predictions, main = paste(lr_thin_prev[[i]][[1]]$Species, 'Thinned + prevalence',sep="\n"))
+  # points(x = lr_org[[i]][[1]]$Data$lon[lr_org[[i]][[1]]$Data$val == 1],
+  #        lr_org[[i]][[1]]$Data$lat[lr_org[[i]][[1]]$Data$val == 1],
+  #        cex = 0.6, col = "red", pch = 20)
+  
+}
+
+par(mfrow = c(1,1))
+
+
+```
+
+
+

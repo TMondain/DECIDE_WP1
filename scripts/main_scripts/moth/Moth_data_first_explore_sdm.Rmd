@@ -1,0 +1,156 @@
+---
+title: "Moth data first sdm"
+author: "Thomas MM"
+date: "09/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r packages}
+
+library(tidyverse)
+library(soaR)
+library(readr)
+library(BRCmap)
+library(lubridate)
+
+
+```
+
+
+```{r data}
+
+# get the files from the NRMS and bind them together
+f <- list.files("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/")
+f
+
+out_dat <- list()
+
+for(i in grep(pattern = "NMRS", x = f, value = T)){
+  print(i)
+  
+  out_dat[[i]] <- read_csv(file = paste("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/", i, sep = ""))
+  
+}
+
+main_df <- do.call("rbind", out_dat)
+
+head(main_df)
+
+# main_df %>% 
+#   ggplot(aes(x = year(dmy(TO_STARTDATE)))) + 
+#   geom_bar() +
+#   theme_bw()
+
+
+# get the species name
+l_n <- read_csv(file = "Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/lepidoptera_names.csv")
+
+
+```
+
+
+# check the precision of records
+
+very highly in favour of 100m
+
+```{r n_precision}
+
+# check number of records per precision level
+main_df %>% group_by(TO_PRECISION, yr = year(dmy(TO_STARTDATE))) %>% 
+  tally() %>% 
+  ggplot(aes(x = TO_PRECISION, y = n, colour = (factor(yr)))) +
+  geom_point() +
+  # geom_boxplot(aes(group = TO_PRECISION)) +
+  xlab("Precision (m)") + ylab("sightings")
+
+```
+
+```{r data_faffing}
+
+# lat lon from grid refs
+ll <- gr2gps_latlon(main_df$TO_GRIDREF)
+
+# only get precision 100 and recorded on the same date
+df <- subset(cbind(main_df, ll), DT_ID == 1  & 
+                 TO_PRECISION == 100) %>% 
+  mutate(lon = LONGITUDE, 
+         lat = LATITUDE,
+         date = dmy(TO_STARTDATE),
+         yr = year(date),
+         jd = yday(date),
+         sp_n = l_n$NAME[match(CONCEPT, l_n$CONCEPT)],
+         com_n = l_n$NAME_ENGLISH[match(CONCEPT, l_n$CONCEPT)],
+         ig = l_n$INFORMAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date
+
+```
+
+
+```{r species}
+
+# unique(df$sp_n)
+
+
+```
+
+# number of duplicates
+
+
+```{r remove_duplicates}
+
+dim(df[duplicated(df$id),])
+
+df_nodups <-  df[!duplicated(df$id),]
+head(df_nodups)
+
+# write.csv(df_nodups, file = "Data/moth_no_duplicates.csv")
+
+```
+
+
+```{r sights_thru_time}
+
+
+df_nodups %>% 
+  ggplot(aes(x = yr)) + 
+  geom_bar() +
+  theme_bw()
+
+
+```
+
+Something weird going on so need to check with colin... For now, just move on.
+
+
+```{r identify_common_rare_spp}
+
+
+df_nodups %>% group_by(sp_n) %>% 
+  tally() %>% arrange(-n)
+
+df_nodups %>% group_by(sp_n) %>% 
+  tally() %>% filter(n>15000) %>% 
+  arrange(n)
+
+df_nodups %>% group_by(sp_n, yr) %>% tally() %>% ungroup() %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n, colour = factor(yr))) +
+  geom_point() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("species") + ylab("number of sightings")
+
+
+```
+
+
+
+
+
+

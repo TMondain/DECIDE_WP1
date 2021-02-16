@@ -1,0 +1,552 @@
+---
+title: "Bootstrap predictions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+
+library(readr)
+library(tidyverse)
+library(raster)
+library(foreach)
+library(doParallel)
+# library(snow)
+library(dismo)
+library(randomForest)
+# library(rfinterval)
+library(BRCmap)
+library(mgcv)
+source('C:/Users/thoval/OneDrive - NERC/Documents/Analyses/Edited_Rob_Functions.R')
+
+```
+
+
+Just want to do a little demonstration of what the bootstrapping process looks like and how the bootstrapped predictions from a logistic regression compare to the standard error lifted directly from the model. The first steps are just getting the environmental data, the pseudoabsences created and the models run.
+
+## environmental data
+
+
+```{r edata}
+
+ed <- raster::stack('C:/Users/thoval/OneDrive - NERC/Documents/Analyses/Data/lcm_had_elev_national_grid.gri')
+names(ed)
+
+## big problem with slope and aspect!!!
+ed <- dropLayer(ed, i = match(c("slope", "aspect"), names(ed)))
+
+slope <- terrain(ed[[42]], opt = "slope", unit = "degrees")
+aspect <- terrain(ed[[42]], opt = "aspect", unit = "degrees")
+
+ed <- raster::stack(ed, slope, aspect)
+names(ed)
+
+plot(ed[[43]], main = names(ed[[43]]), ylim=c(780000, 860000), xlim = c(60000, 200000))
+plot(ed[[44]], main = names(ed[[44]]), ylim=c(780000, 860000), xlim = c(60000, 200000))
+
+```
+
+## Crop and drop correlated variables
+
+Get an area of interest and drop correlated weather variables. Limiting it to a northern-ish part of England.
+
+```{r AOI}
+
+ext_h <- extent(matrix(c(-4,53, 0.2,54.5), ncol = 2))
+e <- as(ext_h, "SpatialPolygons")
+sp::proj4string(e) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+e.geo <- sp::spTransform(e, CRS("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs"))
+
+hbv_y <- raster::crop(ed, e.geo)
+
+plot(hbv_y[[43]], main = names(hbv_y[[43]]))
+
+# exclude variables with >0.7 correlation
+whichVars <- usdm::vifcor(hbv_y[[26:41]], th = 0.7)
+whichVars
+# whichVars <- usdm::vifcor(hbv_y, th = 0.7)
+# whichVars
+
+
+hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
+# plot(hbv_y)
+names(hbv_y)
+ht <- hbv_y
+
+plot(ht[[2]], main = names(ht[[2]]))
+
+```
+
+
+## Species data 
+
+Plot number of data points in the whole of the UK and for the region of interest that I've chosen. Can see that *Tyria jacobaeae* is the most recorded species at both extents.
+
+
+```{r dayflierMoths}
+
+dfm_df <- read_csv("C:/Users/thoval/OneDrive - NERC/Documents/Analyses/DayFlyingMoths.csv")
+head(dfm_df)
+
+# get eastings and northings
+dfm_df <- c_en(dfm_df)
+
+# # write file
+# dfm_df2 <- dfm_df %>% mutate(lon = EASTING,
+#                              lat = NORTHING,
+#                              species = sp_n) %>%
+#   dplyr::select(-EASTING, -NORTHING)
+# write.csv(dfm_df2, file = "C:/Users/thoval/OneDrive - NERC/Documents/Analyses/Data/DayFlyingMoths_East_Norths.csv")
+
+dfm_df %>% group_by(sp_n) %>% tally %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 50, hjust=1)) +
+  xlab("species") + ggtitle("All UK") +
+  ylab("Number of sightings")
+
+sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
+                 lon > -3.9 & lon < 0.2) %>% 
+  mutate(species = sp_n,
+         year = yr)
+
+sp_y %>% group_by(sp_n) %>% tally %>% 
+  ggplot(aes(x = reorder(sp_n, n), y = n)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 50, hjust=1)) +
+  xlab("species") + ggtitle("Subset UK, 53.1 < latitude <= 54.4") +
+  ylab("Number of sightings")
+
+```
+
+Get the counts of all species in each grid cell of the 100m raster for the whole UK 
+
+```{r counts_spp}
+
+## create spdf from records of broader taxanomic group ##
+xy <- dfm_df[,c("EASTING","NORTHING")]
+spdf.tax <- SpatialPointsDataFrame(coords = xy, data = dfm_df ,
+                                   proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")) 
+
+plot(spdf.tax) ## check with plot
+
+### create temporary raster to store number of records in each cell ###
+# this is used to make an 'effort' layer
+temp.ras <- ed[[42]]
+
+# make a raster of zeroes for input
+temp.ras[!is.na(temp.ras)] <- 0
+# get the cell index for each point and make a table:
+counts = table(cellFromXY(temp.ras,spdf.tax))
+hist(counts) # very few counts in each cell... But this has duplicates of location on the same day removed
+# fill in the raster with the counts from the cell index:
+temp.ras[as.numeric(names(counts))] <- counts
+
+plot(temp.ras)
+plot(log(temp.ras))
+
+
+```
+
+
+## pseudoabsences
+
+Generate the pseudoabsences.
+
+```{r presabs}
+
+
+#### Create presence/absence
+spp <- unique(sp_y$species)
+
+# as a hack to not have to create a new function for east and north
+# create a data frame that has East and north renamed as lon lat
+ndf <- sp_y %>% mutate(lon = EASTING,
+                       lat = NORTHING) %>% 
+  dplyr::select(-EASTING, -NORTHING)
+
+
+registerDoParallel(cores = detectCores() - 1)
+
+system.time( 
+  ab1 <- foreach(i = 1 : length(spp)) %dopar% {
+    
+    cpa(spdat = moths, species = spp[i], matchPres = TRUE,
+        minYear = 2000, maxYear = 2017, recThresh = 5, 
+        screenRaster = NULL)
+    
+  }
+)
+
+registerDoSEQ()
+
+names(ab1) <- spp
+
+```
+
+## Logistic regression
+
+Parallelised lr sdm with 10 k-fold validations to get bootstrapped errors. <10 minute run time
+
+Set the K value to the number of bootstraps that you want for the model. This randomly samples the data and fits a model k times. The models are stored in the output object and so then can be used to predict the probability of presence.
+
+
+```{r LR_sdm}
+
+
+# do all species in parallel to save time
+registerDoParallel(cores = detectCores() - 1)
+
+names(ab1) <- spp
+system.time(
+  spp_lr_out <- foreach(s = 1:length(spp), #.combine='comb', .multicombine=TRUE,
+                        # .init=list(list()), 
+                        .packages = c('tidyverse', 'raster', 'readr', 'dismo'),
+                        .errorhandling = 'pass') %dopar% {
+                          
+                          # print(paste(s, spp[s], sep = " "))
+                          
+                          if(is.null(ab1[s])){
+                            # print(paste("No data for species", spp[s]))
+                            next
+                          }
+                          
+                          sdm_lr <- fsdm(species = spp[s], model = "lr", 
+                                         climDat = ht, spData = ab1, knots = -1,
+                                         k = 10,
+                                         prediction = T,
+                                         inters = F, 
+                                         write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+                          
+                          se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+                          # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+                          
+                          list(sdm_lr, se_out)
+                        }
+)
+
+registerDoSEQ()
+
+spp_lr_out[[14]]
+
+```
+
+
+The output of this function is a bit odd as it has a list within another list. The first list is each separate species, and the second list is the output from the fsdm function [[1]] and the standard error [[2]]. Obviously, with models that do not have a standard error prediction there will be no entry in the second list.
+
+## predict from each bootstrapped model
+
+At the moment, just a regular for loop that predicts the probability of presence for the whole region of interest which makes it slow. The predict function has an extent argument meaning that we can predict for smaller subsets of the overall distribution of a species.
+
+First let's choose the extent to project to so that we can reduce processing time and get a more detailed view.
+
+```{r extent_choice}
+
+
+ext <- extent(matrix(c(340000,450000, 400000,490000), ncol = 2))
+
+plot(spp_lr_out[[2]][[1]]$Predictions, main = spp_lr_out[[2]][[1]]$Species)
+points(x = spp_lr_out[[2]][[1]]$Data$lon[spp_lr_out[[2]][[1]]$Data$val == 1],
+       spp_lr_out[[2]][[1]]$Data$lat[spp_lr_out[[2]][[1]]$Data$val == 1],
+       cex = 0.6, col = "red", pch = 20)
+plot(ext, add = T)
+
+test_area <- crop(spp_lr_out[[2]][[1]]$Predictions, ext) 
+plot(test_area, main = paste(spp_lr_out[[2]][[1]]$Species, 'cropped'))
+
+
+
+```
+
+Now predict from each of the models that were generated on a subset of the data. This takes a while but can almost certainly be sped up. Just some notes to myself here really...
+
+There is probably a way to speed this up but I need to figure out how parallelise nested for loops which is tricky because of the needed to catch and skip (known) errors.
+
+I think the way to do this is to change the second for loop to be s in 1:20 (i.e. number of bootstrapped models rather than the length of the object itself). This is because the errors form because some of the spp_lr_out[[]] objects are null so can't get the length of an object like that. Then use the %:% and %dopar% functions to send it to multiple cores.
+
+
+```{r boot_preds}
+
+
+spp_out_boot <- list()
+
+# beginCluster(n = 7)
+
+system.time(
+  for(s in 1:length(spp_lr_out)){
+    
+    # some entries in the list are NULL because of too few data points in the kfold cross validation part of the model above
+    skip_to_next <- FALSE
+    
+    # find the error
+    tryCatch({ 
+      bt_mods_loc <- spp_lr_out[[s]][[1]]$Bootstrapped_models
+    },
+    error = function(e) {skip_to_next <<- TRUE})
+    
+    # skip to next if error
+    if(skip_to_next){print(paste("SKIPPING LIST ENTRY", s))
+      next}
+    
+    print(paste(s, spp_lr_out[[s]][[1]]$Species))
+    
+    
+    pred_out_boot <- list()
+    for(b in 1:length(spp_lr_out[[s]][[1]]$Bootstrapped_models)) {
+      # print(b)
+      
+      # predict from each bootsrapped model
+      b_t <- spp_lr_out[[s]][[1]]$Bootstrapped_models[[b]]
+      
+      # non-parallel
+      p_t <- suppressWarnings(predict(ht, b_t, index = NULL, type = 'response', ext = ext))
+      
+      # parallel
+      # p_t <- clusterR(ht, predict, args = list(b_t, type = 'response', index = NULL, ext = ext), export='ext')
+      
+      # store
+      pred_out_boot[[b]] <- p_t
+    }
+    
+    # stack all the predictions and store as outputs
+    boots <- do.call("stack", pred_out_boot)
+    spp_out_boot[[spp_lr_out[[s]][[1]]$Species]] <- boots
+    
+  }
+)
+
+# endCluster()
+
+
+```
+
+This sometimes throws an error because of memory allocation (cannot allocate vector size xxxMB) when using larger extents.
+
+
+## generate test error layer for *Zygaena filipendulae*
+
+The quantile/range function takes a long time when projecting to a large area, with the extent that we decided on above it's not too bad (~<1min).
+
+This block of code calculates the 0.05 and 0.95 quantile in each cell of each of the bootstrapped predictions, subtracts the lower from the upper and then plots the result.
+
+```{r get_error_ZL, fig.height = 6, fig.width=12}
+
+# registerDoParallel(cores = detectCores() - 1)
+zl_q <- calc(spp_out_boot$`Zygaena filipendulae` , fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)})
+
+# system.time(
+#   zl_q <- clusterR(spp_out_boot$`Zygaena filipendulae`, calc, 
+#                    agrs = list(fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)}))
+# )
+# 
+# registerDoSEQ()
+
+zl_q
+
+
+zl_q_25_75 <- zl_q[[2]]-zl_q[[1]]
+
+# names(ab1) # zygaena filip is second in the list
+
+par(mfrow = c(1,2))
+plot(test_area, main = paste(spp_lr_out[[2]][[1]]$Species, "distribution"))
+# points(x = spp_lr_out[[2]][[1]]$Data$lon[spp_lr_out[[2]][[1]]$Data$val == 1], 
+#        spp_lr_out[[2]][[1]]$Data$lat[spp_lr_out[[2]][[1]]$Data$val == 1],
+#        cex = 0.6, col = "red", pch = 20)
+plot(zl_q_25_75, main = "95% - 5% quantile")
+points(x = spp_lr_out[[2]][[1]]$Data$lon[spp_lr_out[[2]][[1]]$Data$val == 1],
+       spp_lr_out[[2]][[1]]$Data$lat[spp_lr_out[[2]][[1]]$Data$val == 1],
+       cex = 0.6, col = "red", pch = 20)
+par(mfrow = c(1,1))
+
+
+
+```
+
+## Coefficient of Variation
+
+One way of looking at variation is by dividing the standard deviation by the mean. This means you get an estimate of variation which is proportional to the mean
+
+```{r CoV_ZL}
+
+# registerDoParallel(cores = detectCores() - 1)
+zl_cov <- calc(spp_out_boot$`Zygaena filipendulae` , fun = function(x) {sd(x, na.rm = T) / mean(x, na.rm = T)})
+
+zl_m <- calc(spp_out_boot$`Zygaena filipendulae` , fun = mean)
+# system.time(
+#   zl_q <- clusterR(spp_out_boot$`Zygaena filipendulae`, calc, 
+#                    agrs = list(fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)}))
+# )
+# 
+# registerDoSEQ()
+
+
+# names(ab1) # zygaena filip is second in the list
+
+# par(mfrow = c(1,3))
+plot(test_area, main = paste(spp_lr_out[[2]][[1]]$Species, "distribution"))
+# points(x = spp_lr_out[[2]][[1]]$Data$lon[spp_lr_out[[2]][[1]]$Data$val == 1], 
+#        spp_lr_out[[2]][[1]]$Data$lat[spp_lr_out[[2]][[1]]$Data$val == 1],
+#        cex = 0.6, col = "red", pch = 20)
+plot(zl_q_25_75, main = "95% - 5% quantile")
+plot(zl_cov, main = "Coefficient of Variation")
+# points(x = spp_lr_out[[2]][[1]]$Data$lon[spp_lr_out[[2]][[1]]$Data$val == 1],
+#        spp_lr_out[[2]][[1]]$Data$lat[spp_lr_out[[2]][[1]]$Data$val == 1],
+#        cex = 0.6, col = "red", pch = 20)
+# par(mfrow = c(1,1))
+
+print("mid mean, low sd")
+td <- rnorm(1000, 0.5, 0.2)
+sd(td)/mean(td)
+
+print("high mean, low sd")
+td_hm <- rnorm(1000, 0.8, 0.2)
+sd(td_hm)/mean(td_hm)
+
+print("mid mean, mid sd")
+td_hv <- rnorm(1000, 0.5, 0.5)
+sd(td_hv)/mean(td_hv)
+
+print("high mean, mid sd")
+td_hmv <- rnorm(1000, 0.8, 0.5)
+sd(td_hmv)/mean(td_hmv)
+
+print("high mean, high sd")
+td_hmhv <- rnorm(1000, 0.8, 0.5)
+sd(td_hmhv)/mean(td_hmhv)
+
+print("low mean, high sd")
+td_lmv <- rnorm(1000, 0.1, 0.9)
+sd(td_lmv)/mean(td_lmv)
+
+
+```
+
+
+
+## code for error across all species
+
+Now let's do the same for all of the species in the bootstrapped outputs.
+
+```{r get_err_allspp}
+
+length(spp_out_boot)
+
+# boot_out <- vector(mode = "list", length = length(spp_out_boot))
+# 
+# # beginCluster(7)
+# 
+# for(bs in 1:length(spp_out_boot)){
+#   print(bs)
+#   
+#   sp_bts <- spp_out_boot[[bs]]
+#   
+#   
+#   # zl_q <- calc(spp_out_boot$`Zygaena lonicerae` , fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)})
+#   # sp_q <- clusterR(sp_bts, calc, 
+#   #                  agrs = list(fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)}))
+#   
+#   sp_q <- calc(sp_bts, fun = function(x) {quantile(x, probs = c(0.05, 0.95),
+#                                                    na.rm = T)})
+#   
+#   sp_q_25_75 <- sp_q[[2]]-sp_q[[1]]
+#   
+#   names(sp_q_25_75) <- names(spp_out_boot)[bs]
+#   
+#   boot_out[[bs]] <- sp_q_25_75
+#   
+# }
+# 
+# # endCluster()
+
+bs = 1
+
+registerDoParallel(cores = detectCores() - 1)
+
+system.time(
+  boot_out <- foreach(bs = 1:length(spp_out_boot), #.combine='comb', .multicombine=TRUE,
+                      # .init=list(list()), 
+                      .packages = c('raster'),
+                      .errorhandling = 'pass') %dopar% {
+                        
+                        sp_bts <- spp_out_boot[[bs]]
+                        
+                        
+                        # zl_q <- calc(spp_out_boot$`Zygaena lonicerae` , fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)})
+                        # sp_q <- clusterR(sp_bts, calc, 
+                        #                  agrs = list(fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = T)}))
+                        
+                        # quantiles
+                        sp_q <- calc(sp_bts, fun = function(x) {quantile(x, probs = c(0.05, 0.95),
+                                                                         na.rm = T)})
+                        
+                        sp_q_25_75 <- sp_q[[2]]-sp_q[[1]]
+                        
+                        names(sp_q_25_75) <- names(spp_out_boot)[bs]
+                        
+                        sp_q_25_75
+                        
+                      })
+
+registerDoSEQ()
+
+
+
+```
+
+
+Plot all of the species together. It's important to remember that these plots are still from logistic regression models so some of the predictions aren't great. For the species that have relatively few data points, you can see that there is a lot of variation in the bootstrapped predictions. I don't think this would be a problem for the adaptive sampling because the variation layer would just be a lot less important than the distance from any other point or the probability of presence layer. One of the key benefits of having a bootstrapped variation/error layer is that it is bound between 0 and 1 which means that we won't get the figures skewed by certain areas of really high uncertainty (but this might also be a drawback of course if these are the areas that would benefit most from extra sampling).
+
+
+
+```{r plot_all, fig.height=4, fig.width=11}
+# 
+# 
+# length(boot_out)
+#
+par(mfrow = c(1,3))
+for(j in c(1:26)){
+  
+  if(length(spp_out_boot)>26){
+    
+    plot(spp_lr_out[[j]][[1]]$Predictions, main = spp_lr_out[[j]][[1]]$Species, 
+         xlim = c(340000, 400000), 
+         ylim = c(450000, 490000))
+    plot(spp_lr_out[[j]][[2]], main = paste(spp_lr_out[[j]][[1]]$Species, 'Standard error'), 
+         xlim = c(340000, 400000), 
+         ylim = c(450000, 490000))
+    plot(boot_out[[j]], main = paste(names(boot_out[[j]]), '95% - 5% quantile'))
+    
+  } else if(length(spp_out_boot)==26){
+    
+    if(j<20){
+      
+      plot(spp_lr_out[[j]][[1]]$Predictions, main = spp_lr_out[[j]][[1]]$Species, 
+           xlim = c(340000, 400000), 
+           ylim = c(450000, 490000))
+      plot(spp_lr_out[[j]][[2]], main = paste(spp_lr_out[[j]][[1]]$Species, 'Standard error'), 
+           xlim = c(340000, 400000), 
+           ylim = c(450000, 490000))
+      plot(boot_out[[j]], main = paste(names(boot_out[[j]]), '95% - 5% quantile'))
+      
+    } else if(j>=20){
+      
+      plot(spp_lr_out[[j+1]][[1]]$Predictions, main = spp_lr_out[[j+1]][[1]]$Species,
+           xlim = c(340000, 400000),
+           ylim = c(450000, 490000))
+      plot(spp_lr_out[[j+1]][[2]], main = paste(spp_lr_out[[j+1]][[1]]$Species, 'Standard error'),
+           xlim = c(340000, 400000),
+           ylim = c(450000, 490000))
+      plot(boot_out[[j]], main = paste(names(boot_out[[j]]), '95% - 5% quantile'))
+      
+    }
+  }
+}
+par(mfrow = c(1,1))
+
+
+```
+
