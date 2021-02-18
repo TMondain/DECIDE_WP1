@@ -1,7 +1,5 @@
 
 
-
-
 library(readr)
 library(tidyverse)
 library(raster)
@@ -13,11 +11,10 @@ library(rfinterval)
 library(BRCmap)
 library(ranger)
 library(mgcv)
-source('C:/Users/thoval/Documents/Analyses/Edited_Rob_Functions.R')
+source('scripts/functions/Edited_Rob_Functions.R')
 
 
-
-ed <- raster::stack("Data/lcm_had_elev_national_grid.gri")
+ed <- raster::stack("data/environmental_data/lcm_had_elev_national_grid.gri")
 names(ed)
 
 ## big problem with slope and aspect!!!
@@ -41,6 +38,8 @@ getwd()
 # load("slope_aspect.rdata")
 # plot(slp_asp)
 
+
+## cropping to a small extent
 ext_h <- extent(matrix(c(-4,53, 0.2,54.5), ncol = 2))
 e <- as(ext_h, "SpatialPolygons")
 sp::proj4string(e) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
@@ -53,6 +52,8 @@ plot(hbv_y[[43]], main = names(hbv_y[[43]]))
 
 names(hbv_y)
 
+
+####    Remove correlated variables    ####
 # exclude variables with >0.7 correlation
 whichVars <- usdm::vifcor(hbv_y[[26:41]], th = 0.7)
 whichVars
@@ -68,92 +69,31 @@ hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
 names(hbv_y)
 ht <- hbv_y
 
-# # project back to latlon for now
-# beginCluster()
-# ht <- raster::projectRaster(hbv_y, crs = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"), method = "ngb")
-# endCluster()
 plot(ht[[1]])
-
 names(ht)
 
-
-spdf <- read_csv("Data/moth_no_duplicates.csv")
-
-#day fliers
-dfm <- c("Jordanita globulariae",
-         "Adscita statices",
-         "Adscita geryon",
-         "Zygaena purpuralis",
-         "Zygaena loti",
-         "Zygaena exulans",
-         "Zygaena viciae",
-         "Zygaena filipendulae",
-         "Zygaena lonicerae",
-         "Zygaena lonicerae/trifolii",
-         "Zygaena trifolii",
-         # "Lasiocampa quercus",
-         "Hemaris tityus",
-         "Hemaris fuciformis",
-         "Idaea muricata",
-         "Scotopteryx bipunctaria",
-         "Epirrhoe tristata",
-         "Minoa murinata",
-         "Rheumaptera hastata",
-         "Odezia atrata",
-         "Perizoma albulata",
-         "Eupithecia pygmaeta",
-         "Archiearis parthenias",
-         "Archiearis notha",
-         "Macaria carbonaria",
-         "Macaria brunneata",
-         "Chiasmia clathrata",
-         "Pseudopanthera macularia",
-         "Lycia lapponaria",
-         "Lycia zonaria",
-         "Ematurga atomaria",
-         "Glacies coracina",
-         "Siona lineata",
-         "Perconia strigillaria",
-         "Orgyia antiqua",
-         "Orgyia recens",
-         "Parasemia plantaginis",
-         "Tyria jacobaeae",
-         "Phytometra viridaria",
-         "Euclidia glyphica",
-         "Euclidia mi",
-         "Tyta luctuosa",
-         "Panemeria tenebrata",
-         "Heliothis viriplaca",
-         "Heliothis maritima",
-         # "Eremobia ochroleuca",
-         "Photedes captiuncula",
-         # "Cerapteryx graminis",
-         "Anarta melanopa",
-         "Anarta myrtilli",
-         "Anarta cordigera")
-
-dfm <- dfm[!duplicated(dfm)]
-
-dfm_df <- spdf[spdf$sp_n %in% dfm,]
-getwd()
-# write.csv(dfm_df, file = "DayFlyingMoths.csv")
-dfm_df <- read_csv("DayFlyingMoths.csv")
+#####    Load in day flying moth data     #####
+dfm_df <- read_csv("data/edited_insect_data/moth/DayFlyingMoths.csv")
 head(dfm_df)
 
 # get eastings and northings
 dfm_df <- c_en(dfm_df)
 
+
+# numbers all uk
 dfm_df %>% group_by(sp_n) %>% tally %>% 
   ggplot(aes(x = reorder(sp_n, n), y = n)) +
   geom_point() +
   theme(axis.text.x = element_text(angle = 50, hjust=1)) +
   xlab("species") + ggtitle("All UK")
 
+## subset to AOI
 sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
                  lon > -3.9 & lon < 0.2) %>% 
   mutate(species = sp_n,
          year = yr)
 
+# New tally
 sp_y %>% group_by(sp_n) %>% tally %>% 
   ggplot(aes(x = reorder(sp_n, n), y = n)) +
   geom_point() +
@@ -186,6 +126,7 @@ system.time(
 
 registerDoSEQ()
 
+
 ## test functions with for loop
 
 names(ab1) <- spp
@@ -203,10 +144,9 @@ for(s in 1:3){
   sdm_lr <- fsdm(species = spp[s], model = "lr",
                  climDat = ht, spData = ab1, knots = -1,
                  k = 10,
-                 inters = F,
                  write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
   
-  se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+  # se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
   # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
   
   spp_lr_out[[s]] <- sdm_lr
