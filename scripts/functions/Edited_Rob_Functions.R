@@ -104,6 +104,8 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     
     ###### Move straight to 'bootstrapping' ######
     
+    print('######     Bootstrapping    ######')
+    
     folds <- c(kfold(pres, k), kfold(ab, k))
     folds_me_pres <- kfold(spDat$Presence, k)
     folds_me_ab <- kfold(spDat$pseudoAbsence, k)
