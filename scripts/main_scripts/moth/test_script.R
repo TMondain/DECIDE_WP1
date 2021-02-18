@@ -1,4 +1,5 @@
 
+######      Test script for the SDM functions      ######
 
 library(readr)
 library(tidyverse)
@@ -40,7 +41,7 @@ getwd()
 
 
 ## cropping to a small extent
-ext_h <- extent(matrix(c(-4,53, 0.2,54.5), ncol = 2))
+ext_h <- extent(matrix(c(-1,53, 0.2,54.5), ncol = 2))
 e <- as(ext_h, "SpatialPolygons")
 sp::proj4string(e) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
@@ -89,7 +90,7 @@ dfm_df %>% group_by(sp_n) %>% tally %>%
 
 ## subset to AOI
 sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
-                 lon > -3.9 & lon < 0.2) %>% 
+                 lon > -0.8 & lon < 0.2) %>% 
   mutate(species = sp_n,
          year = yr)
 
@@ -119,7 +120,8 @@ system.time(
   ab1 <- foreach(i = 1 : length(spp)) %dopar% {
     
     cpa(spdat = ndf, species = spp[i], matchPres = TRUE,
-        minYear = 2000, maxYear = 2017, recThresh = 5)
+        minYear = 2000, maxYear = 2017, recThresh = 5,
+        screenRaster = ht)
     
   }
 )
@@ -133,27 +135,46 @@ names(ab1) <- spp
 
 spp_lr_out <- list()
 
-for(s in 1:3){
-  print(paste(s, spp[s], sep = " "))
-  
-  if(is.null(ab1[[s]])){
-    print(paste("No data for species", spp[s]))
-    next
+system.time(
+  for(s in 2:3){
+    print(paste(s, spp[s], sep = " "))
+    
+    if(is.null(ab1[[s]])){
+      print(paste("No data for species", spp[s]))
+      next
+    }
+    
+    sdm_lr <- fsdm(species = spp[s], model = "lr",
+                   climDat = ht, spData = ab1, knots = -1,
+                   k = 10,
+                   write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
+    
+    # se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
+    # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
+    
+    spp_lr_out[[s]] <- sdm_lr
+    
   }
-  
-  sdm_lr <- fsdm(species = spp[s], model = "lr",
-                 climDat = ht, spData = ab1, knots = -1,
-                 k = 10,
-                 write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
-  
-  # se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
-  # save(se_out, file = paste0("C:/Users/thoval/Documents/Analyses/lr_outs/", spp[s], "_lr_se_error_prediction.rdata"))
-  
-  spp_lr_out[[s]] <- sdm_lr
-}
+)
 
-par(mfrow = c(1,1))
-plot(spp_lr_out[[2]]$Predictions)
+spp_lr_out[[3]]$AUC
+
+
+## predict from each of the bootstrapped models
+boots_2 <- lapply(spp_lr_out[[2]]$Bootstrapped_models, 
+                  FUN = function(x) predict(ht, x, type='response', index=NULL))
+boot_out <- do.call("stack", boots_2)
+
+## quantiles
+print(paste0('#####   getting quantiles   #####'))
+mean_preds <- calc(boot_out, fun = mean, na.rm = T)
+quant_preds <- calc(boot_out, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
+rnge <- quant_preds[[2]]-quant_preds[[1]]
+
+par(mfrow=c(1,2))
+plot(mean_preds)
+plot(rnge)
+par(mfrow=c(1,1))
 
 
 #######################################################
@@ -221,7 +242,7 @@ for(s in 1:length(spp_lr_out)){
   # find the errror
   tryCatch({ 
     bt_mods_loc <- spp_lr_out[[s]][[1]]$Bootstrapped_models
-    },
+  },
   error = function(e) {skip_to_next <<- TRUE})
   
   # skip to next if error
@@ -244,9 +265,9 @@ for(s in 1:length(spp_lr_out)){
   spp_out_boot[[spp_lr_out[[s]][[1]]$Species]] <- boots
   
 }
-    
+
 spp_out_boot$`Zygaena lonicerae` 
-  
+
 zl_q <- calc(spp_out_boot$`Zygaena lonicerae` , fun=quantile, na.rm = T)
 zl_q
 
