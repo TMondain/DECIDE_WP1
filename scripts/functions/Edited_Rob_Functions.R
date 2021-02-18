@@ -229,27 +229,40 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
 {
   dat <- spdat[spdat$year >= minYear & spdat$year <= maxYear,]
   pres <- dat[dat$species == species, c("lon", "lat")]
+  
   if (nrow(pres) < recThresh) {
     warning("Number of records does not exceed recThresh")
     out <- NULL
   }
+  
   else {
+    
     ab <- dat[dat$species != species, c("lon", "lat")]
+    
     "%!in%" <- Negate("%in%")
     ab <- ab[ab %!in% pres]
+    
     if (nrow(ab) < nrow(pres)) {
       warning("More presences than possible locations for absences. Consider lowering the number of pseudo absences.")
     }
+    
     sampInd <- sample(1:nrow(ab), nAbs, replace = replace)
     if (matchPres == TRUE) {
       sampInd <- sampInd[1:nrow(pres)]
+    } else {
+      if (nAbs <= nrow(ab)) {
+        sampInd <- sample(1:nrow(ab), nAbs)
+      } else {
+        warning(paste0("Fewer than 10,000 locations available for pseudo absences when using the target group approach. Setting nAbs to the maximum number possible (", nrow(ab), ")."))
+        sampInd <- 1:nrow(ab)
+      }
     }
     ab <- ab[sampInd, ]
     out <- list(pres, ab)
     names(out) <- c("Presence", "pseudoAbsence")
     
     ## if screenRaster is specified, check if any presence or absence points fall outside of the raster extent (i.e. they are NA).
-    ## If some data fall outside of the extent of the covariates, drop them, and drop the equivalent number of absences orpresences
+    ## If some data fall outside of the extent of the covariates, drop them, and drop the equivalent number of absences or presences
     ## to ensure they are equal in number.
     
     if (!is.null(screenRaster)) {
