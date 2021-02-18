@@ -1,102 +1,116 @@
-fsdm <- function(species, model, climDat, spData, k, write, outPath, inters = F, knots = -1, prediction = TRUE){#, filename){
+
+###' Fit SMDs - main function for fitting SDMs to data from create presence absence
+###'
+
+fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F, prediction = TRUE,
+                 knots = -1){ 
+  
+  # select species
   ind <- which(names(spData) == species)
   spDat <- spData[[ind]]
+  
   if (is.null(spDat)) {
     out <- NULL
   }
   else {
+    
+    #### extract data ####
     pres <- data.frame(val = 1, raster::extract(x = climDat, y = spDat$Presence, na.rm = T), spDat$Presence)
-    # pres$land_cov <- as.factor(pres$land_cov)
-    if (any(is.na(pres))) {
+    
+    if (any(is.na(pres))) { # this might not be needed with the new screenraster argument for the create pseudoabs function
       pres <- na.omit(pres)
     }
+    
     nRec <- nrow(pres)
+    
+    print(paste("Occurrence records:", nRec))
+    
     ab <- data.frame(val = 0, raster::extract(x = climDat, y = spDat$pseudoAbsence, na.rm = T), spDat$pseudoAbsence)
-    # ab$land_cov <- as.factor(ab$land_cov)
+    
     if (any(is.na(ab))) {
       ab <- na.omit(ab)
     }
+    
+    
     allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
     allDat_loc <- rbind(pres, ab)
-    if (model == "lr") {
-      
-      # no interactions
-      if(inters == F) {
-        fullMod <- glm(val ~ ., data = allDat, family = binomial(link = "logit"))
-      }
-      
-      # .*. is how to include all two-way interactions
-      if(inters == T) {
-        fullMod <- glm(val ~ .*., data = allDat, family = binomial(link = "logit"))
-      }
-      
-      type <- "response"
-      index <- NULL
-    }
     
-    else if (model == "rf") {
-      fullMod <- randomForest(x = allDat[, 2:ncol(allDat)], 
-                              y = as.factor(allDat[, 1]), importance = T, 
-                              norm.votes = TRUE)
-      type <- "prob"
-      index <- 2
-    }  else if(model == "me"){
-      fullMod <- maxent(x = climDat, p = data.frame(spDat$Presence)[,1:2], a = data.frame(spDat$pseudoAbsence)[,1:2])
-    } 
-    else if(model == "gam"){
-      
-      # gams need variables with ~ >10 knots to fit them automatically
-      # so need to remove the variables that appear infrequently in the dataset
-      # get a dataframe with the number of unique values for each variable
-      l <- sapply(allDat, unique)
-      ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]), 
-                               var = "variable")
-      
-      "%!in%" <- Negate("%in%")
-      # drop variables accordiong to number of knots asked for
-      # -1 is basically 9 knots
-      if(knots == -1) {
-        v_keep <- ks[ks$k > 11,]
-        
-        print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
-      }
-      
-      # any others just keep the variables with over the number of knots
-      if(knots > 0) {
-        v_keep <- ks[ks$k > (knots+3),]
-        print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
-      }
-      v_keep
-      
-      form <- as.formula(paste0("val ~ s(", paste(v_keep$variable, 
-                                                  ", k = ", knots) %>% #, 
-                                  # v_keep$knts) %>% 
-                                  paste0(collapse = ") + s("), ")"))
-      form
-      
-      
-      system.time(
-        fullMod <- gam(formula = form, data = allDat, 
-                       family = binomial(link = 'logit'), 
-                       select = T, method = 'REML', gamma = 1.4))
-      
-      type <- "response"
-      index <- NULL
-    }
-    
-    if(prediction == TRUE){
-      pred <- predict(climDat, fullMod, type = type, index = index)
-    } else if(prediction == FALSE){ 
-      pred <- NULL 
-    }
+    # if (model == "lr") {
+    #   
+    #   fullMod <- glm(val ~ ., data = allDat, family = binomial(link = "logit"))
+    #   
+    #   type <- "response"
+    #   index <- NULL
+    # }
+    # 
+    # else if (model == "rf") {
+    #   fullMod <- randomForest(x = allDat[, 2:ncol(allDat)], 
+    #                           y = as.factor(allDat[, 1]), importance = T, 
+    #                           norm.votes = TRUE)
+    #   type <- "prob"
+    #   index <- 2
+    # }  else if(model == "me"){
+    #   fullMod <- maxent(x = climDat, p = data.frame(spDat$Presence)[,1:2], a = data.frame(spDat$pseudoAbsence)[,1:2])
+    # } 
+    # else if(model == "gam"){
+    #   
+    #   # gams need variables with ~ >10 knots to fit them automatically
+    #   # so need to remove the variables that appear infrequently in the dataset
+    #   # get a dataframe with the number of unique values for each variable
+    #   l <- sapply(allDat, unique)
+    #   ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]), 
+    #                            var = "variable")
+    #   
+    #   "%!in%" <- Negate("%in%")
+    #   # drop variables accordiong to number of knots asked for
+    #   # -1 is basically 9 knots
+    #   if(knots == -1) {
+    #     v_keep <- ks[ks$k > 11,]
+    #     
+    #     print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+    #   }
+    #   
+    #   # any others just keep the variables with over the number of knots
+    #   if(knots > 0) {
+    #     v_keep <- ks[ks$k > (knots+3),]
+    #     print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+    #   }
+    #   v_keep
+    #   
+    #   form <- as.formula(paste0("val ~ s(", paste(v_keep$variable, 
+    #                                               ", k = ", knots) %>% #, 
+    #                               # v_keep$knts) %>% 
+    #                               paste0(collapse = ") + s("), ")"))
+    #   form
+    #   
+    #   
+    #   system.time(
+    #     fullMod <- gam(formula = form, data = allDat, 
+    #                    family = binomial(link = 'logit'), 
+    #                    select = T, method = 'REML', gamma = 1.4))
+    #   
+    #   type <- "response"
+    #   index <- NULL
+    # }
+    # 
+    # if(prediction == TRUE){
+    #   pred <- predict(climDat, fullMod, type = type, index = index)
+    # } else if(prediction == FALSE){ 
+    #   pred <- NULL 
+    # }
     
     # raster::plot(pred, col = matlab.like(30))
     # points(spDat$Presence, pch = "+", cex = 0.4)
+    
+    ###### Move straight to 'bootstrapping' ######
+    
     folds <- c(kfold(pres, k), kfold(ab, k))
     folds_me_pres <- kfold(spDat$Presence, k)
     folds_me_ab <- kfold(spDat$pseudoAbsence, k)
-    e <- list()
-    mods_out <- list()
+    
+    e <- vector('list', length = k)
+    mods_out <- vector('list', length = k)
+    
     for (i in 1:k) {
       
       
@@ -108,9 +122,12 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, inters = F,
         test_me_pres <- spDat$Presence[folds_me_ab == i, ]
         test_me_abs <- spDat$pseudoAbsence[folds_me_ab == i, ]
         
-        mod <- maxent(x = climDat, p = data.frame(train_me_pres)[,1:2], a = data.frame(train_me_abs)[,1:2])
+        mod <- maxent(x = climDat, p = data.frame(train_me_pres)[,1:2], 
+                      a = data.frame(train_me_abs)[,1:2])
         
-        e[[i]] <- dismo::evaluate(p = test_me_pres, a = test_me_abs, x = climDat,
+        e[[i]] <- dismo::evaluate(p = test_me_pres, 
+                                  a = test_me_abs, 
+                                  x = climDat,
                                   mod, tr = seq(0, 1, length.out = 200))
         
       }
@@ -125,18 +142,49 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, inters = F,
         }
         else if (model == "rf") {
           mod <- randomForest(x = train[, 2:ncol(train)], 
-                              y = as.factor(train[, 1]), importance = T, 
+                              y = as.factor(train[, 1]), 
+                              importance = T, 
                               norm.votes = TRUE)
-
+          
         }
         else if (model == "gam"){
+          
+          ## create formula for gam
+          l <- sapply(allDat, unique)
+          ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]),
+                                   var = "variable")
+          
+          "%!in%" <- Negate("%in%")
+          # drop variables according to number of knots asked for
+          # -1 is basically 9 knots
+          if(knots == -1) {
+            v_keep <- ks[ks$k > 11,]
+            
+            print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+          }
+          
+          # any others just keep the variables with over the number of knots
+          if(knots > 0) {
+            v_keep <- ks[ks$k > (knots+3),]
+            print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+          }
+          # v_keep
+          
+          form <- as.formula(paste0("val ~ s(", paste(v_keep$variable,
+                                                      ", k = ", knots) %>% #,
+                                      # v_keep$knts) %>%
+                                      paste0(collapse = ") + s("), ")"))
+          # form
+          
+          
           mod <- gam(formula = form, data = train, 
                      family = binomial(link = 'logit'), 
-                     select = T, method = 'REML', gamma = 1.4)
+                     select = TRUE, method = 'REML', gamma = 1.4)
         }
         
         e[[i]] <- evaluate(p = test[test$val == 1, ], 
-                           a = test[test$val == 0, ], mod, tr = seq(0, 1, length.out = 200))
+                           a = test[test$val == 0, ], 
+                           mod, tr = seq(0, 1, length.out = 200))
         
         
       }
@@ -149,10 +197,19 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, inters = F,
     auc <- mean(sapply(e, function(x) {
       slot(x, "auc")
     }))
+    
+    ## old storage when predicting from full model
+    # out <- NULL
+    # out <- list(species, nRec, fullMod, auc, k, pred, allDat_loc, e, mods_out)
+    # names(out) <- c("Species", "Number of records", "Model", 
+    #                 "AUC", "Number of folds for validation", "Predictions", 
+    #                 "Data", "Model_evaluation", "Bootstrapped_models")
+    
     out <- NULL
-    out <- list(species, nRec, fullMod, auc, k, pred, allDat_loc, e, mods_out)
-    names(out) <- c("Species", "Number of records", "Model", 
-                    "AUC", "Number of folds for validation", "Predictions", 
+    out <- list(species, nRec, 
+                auc, k, allDat_loc, e, mods_out)
+    names(out) <- c("Species", "Number of records", 
+                    "AUC", "Number of folds for validation",
                     "Data", "Model_evaluation", "Bootstrapped_models")
     
     if (write == TRUE) {
@@ -163,6 +220,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, inters = F,
   }
   return(out)
 }
+
 
 
 #### Presence absence function
@@ -193,27 +251,27 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     ## if screenRaster is specified, check if any presence or absence points fall outside of the raster extent (i.e. they are NA).
     ## If some data fall outside of the extent of the covariates, drop them, and drop the equivalent number of absences orpresences
     ## to ensure they are equal in number.
-
+    
     if (!is.null(screenRaster)) {
-
+      
       presDrop <- raster::extract(screenRaster, out$Presence)
-
+      
       abDrop <- raster::extract(screenRaster, out$pseudoAbsence)
-
+      
       if (any(is.na(presDrop))) out$Presence <- out$Presence[-which(is.na(presDrop)), ]
-
+      
       if (any(is.na(abDrop))) out$pseudoAbsence <- out$pseudoAbsence[-which(is.na(abDrop)), ]
-
+      
       if (nrow(out$Presence) > nrow(out$pseudoAbsence)) {
-
+        
         out$Presence <- out$Presence[1:nrow(out$pseudoAbsence), ]
-
+        
       } else if (nrow(out$Presence) < nrow(out$pseudoAbsence)) {
-
+        
         out$pseudoAbsence <- out$pseudoAbsence[1:nrow(out$Presence), ]
-
+        
       }
-
+      
     }
     
   }
