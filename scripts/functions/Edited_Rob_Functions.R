@@ -245,7 +245,7 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     ab <- ab[ab %!in% pres]
     
     if (nrow(ab) < nrow(pres)) {
-      warning("More presences than possible locations for absences. Consider lowering the number of pseudo absences.")
+      warning(paste("More presences than possible locations for absences. Consider lowering the number of pseudo absences.", species))
     }
     
     sampInd <- sample(1:nrow(ab), nAbs, replace = replace)
