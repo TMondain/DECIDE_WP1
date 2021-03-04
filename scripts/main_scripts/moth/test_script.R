@@ -144,7 +144,7 @@ system.time(
       next
     }
     
-    sdm_lr <- fsdm(species = spp[s], model = "lr",
+    sdm_lr <- fsdm(species = spp[s], model = "me",
                    climDat = ht, spData = ab1, knots = -1,
                    k = 10,
                    write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
@@ -157,7 +157,7 @@ system.time(
   }
 )
 
-spp_lr_out[[3]]$AUC
+(spp_lr_out[[3]]$Bootstrapped_models[[1]])
 
 
 ## predict from each of the bootstrapped models
