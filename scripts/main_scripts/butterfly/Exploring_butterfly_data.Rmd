@@ -21,9 +21,9 @@ library(lubridate)
 library(raster)
 library(lme4)
 
-
 # get list of files
-f <- list.files("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards", full.names = T)
+f <- list.files(path = 'C:/Users/thoval/OneDrive - NERC/Documents/DECIDE/DECIDE_WP1/data/raw_data/butterfly/', full.names = TRUE)
+f
 
 # read subset of NBN data to test 2000 - 2010
 b00 <- read_csv(f[1])#, n_max = 1000000)
@@ -165,9 +165,9 @@ b002[duplicated(b002$id),] %>%
 
 b002[duplicated(b002$id),] %>% 
   ggplot(aes(x=lon, y = lat)) +
-  geom_polygon(data = uk, aes(x = long, y = lat, group = group),
-               fill = NA, colour = "black", size = 0.1) +
-  coord_map("mercator") +
+  # geom_polygon(data = uk, aes(x = long, y = lat, group = group),
+  #              fill = NA, colour = "black", size = 0.1) +
+  # coord_map("mercator") +
   geom_point(size = 0.1) +
   theme_bw()
 
