@@ -35,6 +35,15 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
     allDat_loc <- rbind(pres, ab)
     
+    ## raster layer needed as matrix for lrReg model
+    if (model == "lrReg") {
+      
+      covsMat <- as.matrix(rasterToPoints(climDat))
+      
+    }
+    
+    
+    
     # if (model == "lr") {
     #   
     #   fullMod <- glm(val ~ ., data = allDat, family = binomial(link = "logit"))
@@ -191,14 +200,66 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         
       }
       
+      ## now implement lasso regression
+      if(model == "lrReg"){
+        
+        train <- allDat[folds != i, ]
+        test <- allDat[folds == i, ]
+        
+        
+        mod <- glmnet::cv.glmnet(x = as.matrix(train[, 2:ncol(train)]),
+                                 y = train[, 1],
+                                 family = "binomial",
+                                 nfolds = 3)
+        # assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])$auc # auc directly from model not based on test data
+        
+        ## Need to evaluate lrReg on training data
+        # for this, we need to predict onto old data cos evaluate() doesn't work with this model
+        
+        ## extract predictions for test data
+        pred <- predict(mod, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
+        
+        pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
+        
+        if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
+        
+        pred_rast <- rasterize(pred[, 1:2], climDat[[1]], field = pred[, 3]) # turn into a raster of probabilities
+        
+        
+        ## getting the AUC
+        coords <- rbind(spDat$Presence, spDat$pseudoAbsence) # presence absence coords
+        
+        coords <- coords[folds == i, ] # get the correct bootstrap testing data
+        
+        preds <- raster::extract(pred_rast, coords) # extract the probabilities at each presence/absence point
+        
+        DATA <- data.frame(index = 1:length(preds),
+                           obs = test$val,
+                           pred = preds)
+        
+        e[[i]] <- PresenceAbsence::auc(DATA, st.dev = F)
+        
+        
+      }
+      
       # store all the bootstrapped models
       mods_out[[i]] <- mod
       
     }
     
-    auc <- mean(sapply(e, function(x) {
-      slot(x, "auc")
-    }))
+    if(model != 'lrReg'){
+      
+      auc <- mean(sapply(e, function(x) {
+        slot(x, "auc")
+      }))
+      
+    } else if(model == 'lrReg'){
+      
+      auc <- mean(do.call('c', e))
+      
+    }
+    
+    
     
     ## old storage when predicting from full model
     # out <- NULL
@@ -241,16 +302,16 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     
     ab <- dat[dat$species != species, c("lon", "lat")]
     
-    "%!in%" <- Negate("%in%")
-    ab <- ab[ab %!in% pres]
+    ab <- ab[!ab %in% pres]
     
     if (nrow(ab) < nrow(pres)) {
-      warning(paste("More presences than possible locations for absences. Consider lowering the number of pseudo absences.", species))
+      warning(paste("More presences than possible locations for absences. Consider lowering the number of pseudo absences. Reducing the number of presences for:", species, 
+                    "to:", nrow(ab)))
+      pres <- pres[sample(x = 1:nrow(pres), size = nrow(ab)),]
     }
     
-    sampInd <- sample(1:nrow(ab), nAbs, replace = replace)
     if (matchPres == TRUE) {
-      sampInd <- sampInd[1:nrow(pres)]
+      sampInd <- sample(1:nrow(ab), nrow(pres))
     } else {
       if (nAbs <= nrow(ab)) {
         sampInd <- sample(1:nrow(ab), nAbs)
@@ -269,26 +330,33 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     
     if (!is.null(screenRaster)) {
       
-      presDrop <- raster::extract(screenRaster, out$Presence)
-      
-      abDrop <- raster::extract(screenRaster, out$pseudoAbsence)
-      
-      if (any(is.na(presDrop))) out$Presence <- out$Presence[-which(is.na(presDrop)), ]
-      
-      if (any(is.na(abDrop))) out$pseudoAbsence <- out$pseudoAbsence[-which(is.na(abDrop)), ]
-      
-      if (nrow(out$Presence) > nrow(out$pseudoAbsence)) {
+      for (i in 1:nlayers(screenRaster)) {
         
-        out$Presence <- out$Presence[1:nrow(out$pseudoAbsence), ]
+        presDrop <- raster::extract(screenRaster[[i]], out$Presence)
         
-      } else if (nrow(out$Presence) < nrow(out$pseudoAbsence)) {
+        abDrop <- raster::extract(screenRaster[[i]], out$pseudoAbsence)
         
-        out$pseudoAbsence <- out$pseudoAbsence[1:nrow(out$Presence), ]
+        if (any(is.na(presDrop))) out$Presence <- out$Presence[-which(is.na(presDrop)), ]
+        
+        if (any(is.na(abDrop))) out$pseudoAbsence <- out$pseudoAbsence[-which(is.na(abDrop)), ]
+        
+      }
+      
+      if (matchPres == TRUE) {
+        
+        if (nrow(out$Presence) > nrow(out$pseudoAbsence)) {
+          
+          out$Presence <- out$Presence[1:nrow(out$pseudoAbsence), ]
+          
+        } else if (nrow(out$Presence) < nrow(out$pseudoAbsence)) {
+          
+          out$pseudoAbsence <- out$pseudoAbsence[1:nrow(out$Presence), ]
+          
+        }
         
       }
       
     }
-    
   }
   
   return(out)
