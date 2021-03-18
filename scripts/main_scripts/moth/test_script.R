@@ -18,7 +18,7 @@ source('scripts/functions/Edited_Rob_Functions.R')
 
 
 ed <- raster::stack("data/environmental_data/edat_nocorrs.gri")
-plot(ed[[33]])
+# plot(ed[[33]])
 
 names(ed)
 
@@ -76,11 +76,12 @@ hbv_y <- raster::crop(ed, e.geo)
 # hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
 # # plot(hbv_y)
 # names(hbv_y)
+
 ht <- hbv_y
 
 ht <- dropLayer(ht, 1) # drop sea
 
-plot(ht[[1]])
+# plot(ht[[1]])
 names(ht)
 
 #####    Load in day flying moth data     #####
@@ -127,9 +128,11 @@ ndf <- sp_y %>% mutate(lon = EASTING,
 registerDoParallel(cores = detectCores() - 1)
 
 system.time( 
-  ab1 <- foreach(i = 1 : length(spp)) %dopar% {
-    
-    cpa(spdat = ndf, species = spp[i], matchPres = TRUE,
+  ab1 <- foreach(i = 1 : length(spp),
+                 .packages = c('raster')) %dopar% {
+    print(i)
+    cpa(spdat = ndf, species = spp[i], matchPres = FALSE,
+        nAbs = 10000,
         minYear = 2000, maxYear = 2017, recThresh = 5,
         screenRaster = ht)
     
