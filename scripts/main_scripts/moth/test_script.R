@@ -12,32 +12,38 @@ library(rfinterval)
 library(BRCmap)
 library(ranger)
 library(mgcv)
+library(glmnet)
+library(PresenceAbsence)
 source('scripts/functions/Edited_Rob_Functions.R')
 
 
-ed <- raster::stack("data/environmental_data/lcm_had_elev_national_grid.gri")
+ed <- raster::stack("data/environmental_data/edat_nocorrs.gri")
+plot(ed[[33]])
+
 names(ed)
 
-## big problem with slope and aspect!!!
-ed <- dropLayer(ed, i = match(c("slope", "aspect"), names(ed)))
 
-slope <- terrain(ed[[42]], opt = "slope", unit = "degrees")
-aspect <- terrain(ed[[42]], opt = "aspect", unit = "degrees")
-
-ed <- raster::stack(ed, slope, aspect)
-names(ed)
-
-plot(ed[[44]], main = names(ed[[44]]), ylim=c(780000, 860000), xlim = c(60000, 200000))
-plot(ed[[44]])
-
-getwd()
-# save(ed, file = "AllEnvironmentalData.rdata")
-# load("AllEnvironmentalData.rdata")
-
-# slp_asp <- raster::stack(slope, aspect)
-# save(slp_asp, file = "slope_aspect.rdata")
-# load("slope_aspect.rdata")
-# plot(slp_asp)
+## old code 
+# ## big problem with slope and aspect!!!
+# ed <- dropLayer(ed, i = match(c("slope", "aspect"), names(ed)))
+# 
+# slope <- terrain(ed[[42]], opt = "slope", unit = "degrees")
+# aspect <- terrain(ed[[42]], opt = "aspect", unit = "degrees")
+# 
+# ed <- raster::stack(ed, slope, aspect)
+# names(ed)
+# 
+# plot(ed[[33]], main = names(ed[[44]]), ylim=c(780000, 860000), xlim = c(60000, 200000))
+# plot(ed[[44]])
+# 
+# getwd()
+# # save(ed, file = "AllEnvironmentalData.rdata")
+# # load("AllEnvironmentalData.rdata")
+# 
+# # slp_asp <- raster::stack(slope, aspect)
+# # save(slp_asp, file = "slope_aspect.rdata")
+# # load("slope_aspect.rdata")
+# # plot(slp_asp)
 
 
 ## cropping to a small extent
@@ -49,26 +55,30 @@ e.geo <- sp::spTransform(e, CRS("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717
 
 hbv_y <- raster::crop(ed, e.geo)
 
-plot(hbv_y[[43]], main = names(hbv_y[[43]]))
 
-names(hbv_y)
-
-
-####    Remove correlated variables    ####
-# exclude variables with >0.7 correlation
-whichVars <- usdm::vifcor(hbv_y[[26:41]], th = 0.7)
-whichVars
-
-# # excluding those with >10 vif stepwise
-# whichVars2 <- usdm::vifstep(hbv_y, th = 10)
-# whichVars2
-
-whichVars@excluded
-
-hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
-# plot(hbv_y)
-names(hbv_y)
+# old code!
+# plot(hbv_y[[43]], main = names(hbv_y[[43]]))
+# 
+# names(hbv_y)
+# 
+# 
+# ####    Remove correlated variables    ####
+# # exclude variables with >0.7 correlation
+# whichVars <- usdm::vifcor(hbv_y[[26:41]], th = 0.7)
+# whichVars
+# 
+# # # excluding those with >10 vif stepwise
+# # whichVars2 <- usdm::vifstep(hbv_y, th = 10)
+# # whichVars2
+# 
+# whichVars@excluded
+# 
+# hbv_y <- dropLayer(x=hbv_y, i = match(whichVars@excluded, names(hbv_y)))
+# # plot(hbv_y)
+# names(hbv_y)
 ht <- hbv_y
+
+ht <- dropLayer(ht, 1) # drop sea
 
 plot(ht[[1]])
 names(ht)
