@@ -63,6 +63,22 @@ slurm_sdm_boot <- function(index) {
   boots <- lapply(sdm$Bootstrapped_models, FUN = function(x) predict(env_dat, x, type=type, index=index))
   boot_out <- do.call("stack", boots)
   
+  # ## predict from lrReg models
+  # if(model == 'lrReg'){ ### work out later!
+  #   ## predict from lrReg model
+  #   pred <- predict(mod, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
+  #   
+  #   pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
+  #   
+  #   if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
+  #   
+  #   pred_rast <- rasterize(pred[, 1:2], climDat[[1]], field = pred[, 3]) # turn into a raster of probabilities
+  #   
+  #   ## store the predictions from lrReg
+  #   lrReg_pred[[i]] <- pred_rast 
+  #   
+  # }
+  
   ## quantiles
   print(paste0('#####   getting quantiles   #####'))
   mean_preds <- calc(boot_out, fun = mean, na.rm = T)
@@ -70,13 +86,32 @@ slurm_sdm_boot <- function(index) {
   rnge <- quant_preds[[2]]-quant_preds[[1]]
   
   model_output <- list(model = model,
-                       sdm_output = sdm,
-                       mean_predictions = mean_preds, # mean probability of presence across all bootstraps
-                       quantile_predictions = quant_preds, # the lower and upper bound quantiles
-                       quantile_range = rnge) # the upper minus the lower quantile
+                       sdm_output = sdm)
   
-  ## save file
-  save(model_output, file = paste0(outPath, "SDMs_", species, 
+  ## save files
+  species_name <- gsub(pattern = ' ', replacement = '_', species)
+  
+  # save prediction raster
+  print("#####     Saving prediction raster     #####")
+  writeRaster(x = mean_preds, 
+              filename = paste0(outPath, model, "_SDMs_", species_name, "_meanpred.grd"),
+              format = 'raster', overwrite = T)
+  
+  # save quantile max min
+  print("#####     Saving quantile max min raster     #####")
+  writeRaster(x = quant_preds, 
+              filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilemaxmin.grd"),
+              format = 'raster', overwrite = T)
+  
+  # save quantile range raster
+  print("#####     Saving quantile range raster     #####")
+  writeRaster(x = rnge, 
+              filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilerange.grd"),
+              format = 'raster', overwrite = T)
+  
+  # save subset model output
+  print("#####     Saving model output     #####")
+  save(model_output, file = paste0(outPath, model, "_SDMs_", species_name, 
                                    ".rdata"))
   
   return(model_output)
