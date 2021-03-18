@@ -18,7 +18,10 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     pres <- data.frame(val = 1, raster::extract(x = climDat, y = spDat$Presence, na.rm = T), spDat$Presence)
     
     if (any(is.na(pres))) { # this might not be needed with the new screenraster argument for the create pseudoabs function
-      pres <- na.omit(pres)
+      
+      warning("!!!   NAs in presences   !!!")
+      
+      # pres <- na.omit(pres)
     }
     
     nRec <- nrow(pres)
@@ -28,7 +31,10 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     ab <- data.frame(val = 0, raster::extract(x = climDat, y = spDat$pseudoAbsence, na.rm = T), spDat$pseudoAbsence)
     
     if (any(is.na(ab))) {
-      ab <- na.omit(ab)
+      
+      warning("!!!   NAs in pseudoabsences   !!!")
+      
+      # ab <- na.omit(ab)
     }
     
     
@@ -42,74 +48,6 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       
     }
     
-    
-    
-    # if (model == "lr") {
-    #   
-    #   fullMod <- glm(val ~ ., data = allDat, family = binomial(link = "logit"))
-    #   
-    #   type <- "response"
-    #   index <- NULL
-    # }
-    # 
-    # else if (model == "rf") {
-    #   fullMod <- randomForest(x = allDat[, 2:ncol(allDat)], 
-    #                           y = as.factor(allDat[, 1]), importance = T, 
-    #                           norm.votes = TRUE)
-    #   type <- "prob"
-    #   index <- 2
-    # }  else if(model == "me"){
-    #   fullMod <- maxent(x = climDat, p = data.frame(spDat$Presence)[,1:2], a = data.frame(spDat$pseudoAbsence)[,1:2])
-    # } 
-    # else if(model == "gam"){
-    #   
-    #   # gams need variables with ~ >10 knots to fit them automatically
-    #   # so need to remove the variables that appear infrequently in the dataset
-    #   # get a dataframe with the number of unique values for each variable
-    #   l <- sapply(allDat, unique)
-    #   ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]), 
-    #                            var = "variable")
-    #   
-    #   "%!in%" <- Negate("%in%")
-    #   # drop variables accordiong to number of knots asked for
-    #   # -1 is basically 9 knots
-    #   if(knots == -1) {
-    #     v_keep <- ks[ks$k > 11,]
-    #     
-    #     print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
-    #   }
-    #   
-    #   # any others just keep the variables with over the number of knots
-    #   if(knots > 0) {
-    #     v_keep <- ks[ks$k > (knots+3),]
-    #     print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
-    #   }
-    #   v_keep
-    #   
-    #   form <- as.formula(paste0("val ~ s(", paste(v_keep$variable, 
-    #                                               ", k = ", knots) %>% #, 
-    #                               # v_keep$knts) %>% 
-    #                               paste0(collapse = ") + s("), ")"))
-    #   form
-    #   
-    #   
-    #   system.time(
-    #     fullMod <- gam(formula = form, data = allDat, 
-    #                    family = binomial(link = 'logit'), 
-    #                    select = T, method = 'REML', gamma = 1.4))
-    #   
-    #   type <- "response"
-    #   index <- NULL
-    # }
-    # 
-    # if(prediction == TRUE){
-    #   pred <- predict(climDat, fullMod, type = type, index = index)
-    # } else if(prediction == FALSE){ 
-    #   pred <- NULL 
-    # }
-    
-    # raster::plot(pred, col = matlab.like(30))
-    # points(spDat$Presence, pch = "+", cex = 0.4)
     
     ###### Move straight to 'bootstrapping' ######
     
@@ -149,7 +87,16 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         test <- allDat[folds == i, ]
         
         if (model == "lr") {
-          mod <- glm(val ~ ., data = train, family = binomial(link = "logit"))
+          mod <- glm(val ~ ., data = train, family = binomial(link = "logit"), 
+                     weights=ifelse(train$val ==1, 
+                                    round(length(train$val[train$val==0])/length(train$val[train$val==1])),
+                                    1))
+          
+          ## weight the minority class by the ratio of majority/minority.
+          ## minority is always the smaller class in my datasets, so give the 
+          ## presence values a larger weight that the minorities
+          ## round the weights argument to make sure those that are close to equilibrium
+          ## aren't affected...?
         }
         else if (model == "rf") {
           mod <- randomForest(x = train[, 2:ncol(train)], 
@@ -193,9 +140,9 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
                      select = TRUE, method = 'REML', gamma = 1.4)
         }
         
-        e[[i]] <- evaluate(p = test[test$val == 1, ], 
-                           a = test[test$val == 0, ], 
-                           mod, tr = seq(0, 1, length.out = 200))
+        e[[i]] <- dismo::evaluate(p = test[test$val == 1, ], 
+                                  a = test[test$val == 0, ], 
+                                  mod, tr = seq(0, 1, length.out = 200))
         
         
       }
@@ -211,34 +158,14 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
                                  y = train[, 1],
                                  family = "binomial",
                                  nfolds = 3)
-        # assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])$auc # auc directly from model not based on test data
         
-        ## Need to evaluate lrReg on training data
-        # for this, we need to predict onto old data cos evaluate() doesn't work with this model
+        # evaluate model on the testing data
+        eval <- assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])  
+        roc <- roc.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])
         
-        ## extract predictions for test data
-        pred <- predict(mod, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
+        e[[i]] <- list(eval, roc)
         
-        pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
-        
-        if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
-        
-        pred_rast <- rasterize(pred[, 1:2], climDat[[1]], field = pred[, 3]) # turn into a raster of probabilities
-        
-        
-        ## getting the AUC
-        coords <- rbind(spDat$Presence, spDat$pseudoAbsence) # presence absence coords
-        
-        coords <- coords[folds == i, ] # get the correct bootstrap testing data
-        
-        preds <- raster::extract(pred_rast, coords) # extract the probabilities at each presence/absence point
-        
-        DATA <- data.frame(index = 1:length(preds),
-                           obs = test$val,
-                           pred = preds)
-        
-        e[[i]] <- PresenceAbsence::auc(DATA, st.dev = F)
-        
+        names(e[[i]]) <- c('evaluation', 'roc')
         
       }
       
@@ -247,18 +174,22 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       
     }
     
+    ## get the auc from each run of the bootstrapping
     if(model != 'lrReg'){
       
-      auc <- mean(sapply(e, function(x) {
+      auc <- sapply(e, function(x) {
         slot(x, "auc")
-      }))
+      })
       
     } else if(model == 'lrReg'){
       
-      auc <- mean(do.call('c', e))
+      auc <- do.call('c', sapply(e, function(x) x$auc))
       
     }
     
+    
+    ## get the mean AUC across all models
+    meanAUC <- mean(auc)
     
     
     ## old storage when predicting from full model
@@ -269,10 +200,11 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     #                 "Data", "Model_evaluation", "Bootstrapped_models")
     
     out <- NULL
-    out <- list(species, nRec, 
-                auc, k, allDat_loc, e, mods_out)
+    out <- list(species, nRec,
+                auc, meanAUC, k, 
+                allDat_loc, e, mods_out)
     names(out) <- c("Species", "Number of records", 
-                    "AUC", "Number of folds for validation",
+                    "AUC", "meanAUC", "Number of folds for validation",
                     "Data", "Model_evaluation", "Bootstrapped_models")
     
     if (write == TRUE) {
@@ -330,7 +262,7 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     
     if (!is.null(screenRaster)) {
       
-      for (i in 1:nlayers(screenRaster)) {
+      for (i in 1:dim(screenRaster)[3]) {
         
         presDrop <- raster::extract(screenRaster[[i]], out$Presence)
         
