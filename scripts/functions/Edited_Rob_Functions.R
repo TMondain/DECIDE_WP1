@@ -103,9 +103,11 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         train <- allDat[folds != i, ]
         
         ## set the weights argument for models
-        if ((model == "lr" | model == "gam") & nRec != nrow(ab)){
+        if ((model == "lrReg"|model == 'lr'|
+             model == "gam"|model == "me") & nRec != nrow(ab)){
           weights <- c(rep(1, length(train$val[train$val == 1])), rep(prop, length(train$val[train$val == 0])))
-        } else { weights <- NULL } 
+        } else if(nRec == nrow()){ weights <- NULL } 
+        
         test <- allDat[folds == i, ]
         
         if (model == "lr") {
@@ -120,12 +122,25 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           ## aren't affected...?
         }
         else if (model == "rf") {
-          mod <- randomForest(x = train[, 2:ncol(train)], 
-                              y = as.factor(train[, 1]), 
-                              importance = T, 
-                              norm.votes = TRUE,
-                              classwt = list(unique(weights)[1],
-                                             unique(weights)[2]))
+           
+          # if records and absences are matched, run without weights (weights = NULL doesn't work)
+          # if they aren't then implement weights argument
+          if(nRec == nrow(ab)){
+            
+            mod <- randomForest(x = train[, 2:ncol(train)], 
+                                y = as.factor(train[, 1]), 
+                                importance = T, 
+                                norm.votes = TRUE)
+            
+          } else if(nRec != nrow(ab)){
+            
+            mod <- randomForest(x = train[, 2:ncol(train)], 
+                                y = as.factor(train[, 1]), 
+                                importance = T, 
+                                norm.votes = TRUE,
+                                classwt = list(unique(weights)[1],
+                                               unique(weights)[2])) ## must be presences, absences
+          }
           
         }
         else if (model == "gam"){
@@ -135,13 +150,13 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]),
                                    var = "variable")
           
-
+          
           # drop variables according to number of knots asked for
           # -1 is basically 9 knots
           if(knots == -1) {
             v_keep <- ks[ks$k > 11,]
             
-            print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+            print(paste("variable dropped =", ks$variable[!ks$variable %in% v_keep$variable]))
           }
           
           # any others just keep the variables with over the number of knots
@@ -181,6 +196,9 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         
         test <- allDat[folds == i, ]
         
+        ## test weights for the testing data 
+        if (model == "lrReg" & nRec != nrow(ab)) testweights <- c(rep(1, length(test$val[test$val == 1])), rep(prop, length(test$val[test$val == 0])))
+        
         
         mod <- glmnet::cv.glmnet(x = as.matrix(train[, 2:ncol(train)]),
                                  y = train[, 1],
@@ -189,8 +207,8 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
                                  weights = weights)
         
         # evaluate model on the testing data
-        eval <- assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])  
-        roc <- roc.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])
+        eval <- assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1], weights = testweights)
+        roc <- roc.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1], weights = testweights)
         
         e[[i]] <- list(eval, roc)
         
