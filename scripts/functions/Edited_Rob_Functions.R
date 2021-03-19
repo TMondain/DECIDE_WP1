@@ -37,14 +37,31 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       # ab <- na.omit(ab)
     }
     
-    
+    # get a data frame with the lat-lon coordinates
     allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
     allDat_loc <- rbind(pres, ab)
     
-    ## raster layer needed as matrix for lrReg model
-    if (model == "lrReg") {
+    # ## raster layer needed as matrix for lrReg model
+    # # don't need at the moment because I am predicting outside of the fitSDM function
+    # if (model == "lrReg") {
+    #   
+    #   covsMat <- as.matrix(rasterToPoints(climDat))
+    #   
+    # }
+    
+    ## determine the weights argument for all models
+    if ((model != "lrReg"|model != 'lr'|model != "gam"|model != "me") & nRec != nrow(ab)) { 
+      warning("Prevalence is not 0.5 and no weights are applied to account for this. Currently weights are only applied where model = lrReg, lr, gam or rf")}
+    
+    if ((model == "lrReg"|model == 'lr'|model == "gam"|model == "rf") & nRec != nrow(ab)) {
       
-      covsMat <- as.matrix(rasterToPoints(climDat))
+      print("Prevalence is not 0.5. Weighting absences to simulate a prevalence of 0.5")
+      
+      nAb <- nrow(ab)
+      
+      prop <- nRec / nAb
+      
+      print(paste("Absence weighting:", prop))
       
     }
     
@@ -84,13 +101,17 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       if(model == 'lr' | model == 'rf' | model == 'gam'){
         
         train <- allDat[folds != i, ]
+        
+        ## set the weights argument for models
+        if ((model == "lr" | model == "gam") & nRec != nrow(ab)){
+          weights <- c(rep(1, length(train$val[train$val == 1])), rep(prop, length(train$val[train$val == 0])))
+        } else { weights <- NULL } 
         test <- allDat[folds == i, ]
         
         if (model == "lr") {
-          mod <- glm(val ~ ., data = train, family = binomial(link = "logit"), 
-                     weights=ifelse(train$val ==1, 
-                                    round(length(train$val[train$val==0])/length(train$val[train$val==1])),
-                                    1))
+          mod <- glm(val ~ ., data = train, 
+                     family = binomial(link = "logit"),
+                     weights = weights)
           
           ## weight the minority class by the ratio of majority/minority.
           ## minority is always the smaller class in my datasets, so give the 
@@ -102,7 +123,9 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           mod <- randomForest(x = train[, 2:ncol(train)], 
                               y = as.factor(train[, 1]), 
                               importance = T, 
-                              norm.votes = TRUE)
+                              norm.votes = TRUE,
+                              classwt = list(unique(weights)[1],
+                                             unique(weights)[2]))
           
         }
         else if (model == "gam"){
@@ -112,7 +135,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           ks <- rownames_to_column(data.frame(k = round(sapply(l, length))[-1]),
                                    var = "variable")
           
-          "%!in%" <- Negate("%in%")
+
           # drop variables according to number of knots asked for
           # -1 is basically 9 knots
           if(knots == -1) {
@@ -124,7 +147,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           # any others just keep the variables with over the number of knots
           if(knots > 0) {
             v_keep <- ks[ks$k > (knots+3),]
-            print(paste("variable dropped =", ks$variable[ks$variable %!in% v_keep$variable]))
+            print(paste("variable dropped =", ks$variable[!ks$variable %in% v_keep$variable]))
           }
           # v_keep
           
@@ -137,7 +160,8 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           
           mod <- gam(formula = form, data = train, 
                      family = binomial(link = 'logit'), 
-                     select = TRUE, method = 'REML', gamma = 1.4)
+                     select = TRUE, method = 'REML', gamma = 1.4,
+                     weights = weights)
         }
         
         e[[i]] <- dismo::evaluate(p = test[test$val == 1, ], 
@@ -151,13 +175,18 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       if(model == "lrReg"){
         
         train <- allDat[folds != i, ]
+        
+        ## set the weights argument for models
+        if (model == "lrReg" & nRec != nrow(ab)) weights <- c(rep(1, length(train$val[train$val == 1])), rep(prop, length(train$val[train$val == 0])))
+        
         test <- allDat[folds == i, ]
         
         
         mod <- glmnet::cv.glmnet(x = as.matrix(train[, 2:ncol(train)]),
                                  y = train[, 1],
                                  family = "binomial",
-                                 nfolds = 3)
+                                 nfolds = 3,
+                                 weights = weights)
         
         # evaluate model on the testing data
         eval <- assess.glmnet(mod, newx = as.matrix(test[,2:ncol(test)]), newy = test[,1])  
