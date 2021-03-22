@@ -41,6 +41,22 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
     allDat_loc <- rbind(pres, ab)
     
+    
+    #### remove any columns with only 0 values - useless for the models
+    # I suppose I could change the threshold for 'importance', 
+    # i.e. remove variables that have very few unique values although 
+    # would have to be careful with not removing the presence absence column
+    if(any(colSums(abs(allDat)) == 0)){
+      
+      print(paste("!!  Removing variables that have only 0 values. variables removed = ", 
+              names(allDat)[colSums(abs(allDat)) == 0], " !!"))
+      
+    }
+    
+    if(any(colSums(abs(allDat)) == 0)) allDat <- allDat[, colSums(abs(allDat)) != 0] # only keep columns that have some values in 
+    if(any(colSums(abs(allDat_loc)) == 0)) allDat_loc <- allDat_loc[, colSums(abs(allDat_loc)) != 0] # only keep columns that have some values in 
+
+    
     # ## raster layer needed as matrix for lrReg model
     # # don't need at the moment because I am predicting outside of the fitSDM function
     # if (model == "lrReg") {
@@ -139,7 +155,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
                                 importance = T, 
                                 norm.votes = TRUE,
                                 classwt = list(unique(weights)[1],
-                                               unique(weights)[2])) ## must be presences, absences
+                                               unique(weights)[2])) ## must be list(presences, absences)
           }
           
         }
