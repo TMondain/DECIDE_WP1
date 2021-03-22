@@ -50,7 +50,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     # }
     
     ## determine the weights argument for all models
-    if ((model != "lrReg"|model != 'lr'|model != "gam"|model != "me") & nRec != nrow(ab)) { 
+    if ((model != "lrReg" & model != 'lr' & model != "gam" & model != "rf") & nRec != nrow(ab)) { 
       warning("Prevalence is not 0.5 and no weights are applied to account for this. Currently weights are only applied where model = lrReg, lr, gam or rf")}
     
     if ((model == "lrReg"|model == 'lr'|model == "gam"|model == "rf") & nRec != nrow(ab)) {
@@ -104,9 +104,9 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         
         ## set the weights argument for models
         if ((model == "lrReg"|model == 'lr'|
-             model == "gam"|model == "me") & nRec != nrow(ab)){
+             model == "gam"|model == "rf") & nRec != nrow(ab)){
           weights <- c(rep(1, length(train$val[train$val == 1])), rep(prop, length(train$val[train$val == 0])))
-        } else if(nRec == nrow()){ weights <- NULL } 
+        } else if(nRec == nrow(ab)){ weights <- NULL } 
         
         test <- allDat[folds == i, ]
         
@@ -224,19 +224,19 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     ## get the auc from each run of the bootstrapping
     if(model != 'lrReg'){
       
-      auc <- sapply(e, function(x) {
+      auc_val <- sapply(e, function(x) {
         slot(x, "auc")
       })
       
     } else if(model == 'lrReg'){
       
-      auc <- do.call('c', sapply(e, function(x) x$auc))
+      auc_val <- sapply(c(1:k), function(x) e[[x]]$evaluation$auc)
       
     }
     
     
     ## get the mean AUC across all models
-    meanAUC <- mean(auc)
+    meanAUC <- mean(auc_val)
     
     
     ## old storage when predicting from full model
@@ -248,7 +248,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     
     out <- NULL
     out <- list(species, nRec,
-                auc, meanAUC, k, 
+                auc_val, meanAUC, k, 
                 allDat_loc, e, mods_out)
     names(out) <- c("Species", "Number of records", 
                     "AUC", "meanAUC", "Number of folds for validation",
