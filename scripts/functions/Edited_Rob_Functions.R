@@ -49,13 +49,13 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     if(any(colSums(abs(allDat)) == 0)){
       
       print(paste("!!  Removing variables that have only 0 values. variables removed = ", 
-              names(allDat)[colSums(abs(allDat)) == 0], " !!"))
+                  names(allDat)[colSums(abs(allDat)) == 0], " !!"))
+      
+      allDat <- allDat[, colSums(abs(allDat)) != 0] # only keep columns that have some values in 
+      allDat_loc <- allDat_loc[, colSums(abs(allDat_loc)) != 0] # only keep columns that have some values in 
       
     }
     
-    if(any(colSums(abs(allDat)) == 0)) allDat <- allDat[, colSums(abs(allDat)) != 0] # only keep columns that have some values in 
-    if(any(colSums(abs(allDat_loc)) == 0)) allDat_loc <- allDat_loc[, colSums(abs(allDat_loc)) != 0] # only keep columns that have some values in 
-
     
     # ## raster layer needed as matrix for lrReg model
     # # don't need at the moment because I am predicting outside of the fitSDM function
@@ -138,7 +138,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           ## aren't affected...?
         }
         else if (model == "rf") {
-           
+          
           # if records and absences are matched, run without weights (weights = NULL doesn't work)
           # if they aren't then implement weights argument
           if(nRec == nrow(ab)){
@@ -308,13 +308,18 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     if (matchPres == TRUE) {
       sampInd <- sample(1:nrow(ab), nrow(pres))
     } else {
-      if (nAbs <= nrow(ab)) {
+      
+      if (nAbs <= nrow(pres)){ # if presences > nAbs, then increase nAbs to match number of presences  
+        sampInd <- sample(1:nrow(ab), nrow(pres))
+      } else if (nAbs <= nrow(ab) & nAbs >= nrow(pres)) {
         sampInd <- sample(1:nrow(ab), nAbs)
       } else {
-        warning(paste0("Fewer than 10,000 locations available for pseudo absences when using the target group approach. Setting nAbs to the maximum number possible (", nrow(ab), ")."))
+        warning(paste0("Fewer than", nAbs, "locations available for pseudo absences when using the target group approach. Setting nAbs to the maximum number possible (", nrow(ab), ")."))
         sampInd <- 1:nrow(ab)
       }
+      
     }
+    
     ab <- ab[sampInd, ]
     out <- list(pres, ab)
     names(out) <- c("Presence", "pseudoAbsence")
