@@ -79,6 +79,9 @@ hbv_y <- raster::crop(ed, e.geo)
 
 ht <- hbv_y
 
+## whole of UK
+ht <- ed
+
 ht <- dropLayer(ht, 1) # drop sea
 
 # plot(ht[[1]])
@@ -100,10 +103,13 @@ dfm_df %>% group_by(sp_n) %>% tally %>%
   xlab("species") + ggtitle("All UK")
 
 ## subset to AOI
-sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
-                 lon > -0.8 & lon < 0.2) %>% 
-  mutate(species = sp_n,
-         year = yr)
+# sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
+#                  lon > -0.8 & lon < 0.2) %>% 
+#   mutate(species = sp_n,
+#          year = yr)
+
+sp_y <- dfm_df %>% mutate(species = sp_n,
+                          year = yr)
 
 # New tally
 sp_y %>% group_by(sp_n) %>% tally %>% 
@@ -124,19 +130,26 @@ ndf <- sp_y %>% mutate(lon = EASTING,
                        lat = NORTHING) %>% 
   dplyr::select(-EASTING, -NORTHING)
 
+## test removing duplicates
+ndf <- ndf %>% 
+  mutate(thinned_id = paste(species, TO_GRIDREF, lon, lat))
+
+ndf_thinned <- ndf[!duplicated(ndf$thinned_id),]
+
 
 registerDoParallel(cores = detectCores() - 1)
 
 system.time( 
   ab1 <- foreach(i = 1 : length(spp),
                  .packages = c('raster')) %dopar% {
-    print(i)
-    cpa(spdat = ndf, species = spp[i], matchPres = FALSE,
-        nAbs = 10000,
-        minYear = 2000, maxYear = 2017, recThresh = 5,
-        screenRaster = ht)
-    
-  }
+
+                                      
+                   cpa(spdat = ndf, species = spp[i], matchPres = FALSE,
+                       nAbs = 10000,
+                       minYear = 2000, maxYear = 2017, recThresh = 5,
+                       screenRaster = ht)
+                   
+                 }
 )
 
 registerDoSEQ()
@@ -149,7 +162,7 @@ names(ab1) <- spp
 spp_lr_out <- list()
 
 system.time(
-  for(s in 2:3){
+  for(s in 1:2){
     print(paste(s, spp[s], sep = " "))
     
     if(is.null(ab1[[s]])){
@@ -157,7 +170,7 @@ system.time(
       next
     }
     
-    sdm_lr <- fsdm(species = spp[s], model = "me",
+    sdm_lr <- fsdm(species = spp[s], model = "rf",
                    climDat = ht, spData = ab1, knots = -1,
                    k = 10,
                    write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
@@ -169,6 +182,11 @@ system.time(
     
   }
 )
+
+for(a in 1:2){
+  print(a)
+  print(spp_lr_out[[a]]$AUC)
+}
 
 (spp_lr_out[[3]]$Bootstrapped_models[[1]])
 
