@@ -79,8 +79,8 @@ hbv_y <- raster::crop(ed, e.geo)
 
 ht <- hbv_y
 
-## whole of UK
-ht <- ed
+# ## whole of UK
+# ht <- ed
 
 ht <- dropLayer(ht, 1) # drop sea
 
@@ -102,14 +102,14 @@ dfm_df %>% group_by(sp_n) %>% tally %>%
   theme(axis.text.x = element_text(angle = 50, hjust=1)) +
   xlab("species") + ggtitle("All UK")
 
-## subset to AOI
-# sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
-#                  lon > -0.8 & lon < 0.2) %>% 
-#   mutate(species = sp_n,
-#          year = yr)
+# subset to AOI
+sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
+                 lon > -0.8 & lon < 0.2) %>%
+  mutate(species = sp_n,
+         year = yr)
 
-sp_y <- dfm_df %>% mutate(species = sp_n,
-                          year = yr)
+# sp_y <- dfm_df %>% mutate(species = sp_n,
+#                           year = yr)
 
 # New tally
 sp_y %>% group_by(sp_n) %>% tally %>% 
@@ -162,7 +162,7 @@ names(ab1) <- spp
 spp_lr_out <- list()
 
 system.time(
-  for(s in 1:2){
+  for(s in 1:3){
     print(paste(s, spp[s], sep = " "))
     
     if(is.null(ab1[[s]])){
@@ -170,7 +170,7 @@ system.time(
       next
     }
     
-    sdm_lr <- fsdm(species = spp[s], model = "rf",
+    sdm_lr <- fsdm(species = spp[s], model = "lrReg",
                    climDat = ht, spData = ab1, knots = -1,
                    k = 10,
                    write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
@@ -183,12 +183,63 @@ system.time(
   }
 )
 
-for(a in 1:2){
+for(a in 1:3){
   print(a)
-  print(spp_lr_out[[a]]$AUC)
+  print(spp_lr_out[[a]]$meanAUC)
 }
 
 (spp_lr_out[[3]]$Bootstrapped_models[[1]])
+
+
+## predict from bootstrapped models for lrReg
+
+covsMat <- as.matrix(rasterToPoints(ht)) # convert variables to matrix
+
+
+## predict from lrReg model
+boots <- stack(lapply(spp_lr_out[[1]]$Bootstrapped_models, FUN = function(x) {
+  
+  pred <- predict(x, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
+  
+  pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
+  
+  if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
+  
+  pred_rast <- rasterize(pred[, 1:2], ht[[1]], field = pred[, 3]) # turn into a raster of probabilities
+  
+  ## return predictions
+  return(pred_rast)
+  
+}))
+
+## check for intercept-only models
+uniqueVals <-lapply(1:k,
+                    function(x) { length(cellStats(boots[[x]], unique)) })
+
+drop <- which(uniqueVals <= 2) ## i.e. the mean and NA
+
+# assign intercept only models an AUC of NULL - important for weighted average later
+if(any(drop)){
+  
+  spp_lr_out[[1]]$AUC[drop] <- NA
+  
+  print(paste("Dropping", length(drop), "intercept-only model(s). Intercept-only models are given an AUC value of NA so they can be identified.
+                        Where 1:(k-1) models are intercept only, only the non-intercept models are included in the final average. Where all models are intercept-only,
+                        their predictions are returned but should not be used."))
+  
+}
+
+
+if (length(drop) == k | length(drop) == 0) {
+  
+  meanPred <- mean(boots) # where all models are intercept-only, takes the mean to avoid errors later but AUC scores are NA which means they are dropped for final ensembles
+  
+} else {
+  
+  meanPred <- mean(boots[[-drop]])
+  
+}
+
 
 
 ## predict from each of the bootstrapped models
