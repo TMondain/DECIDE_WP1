@@ -60,36 +60,79 @@ slurm_sdm_boot <- function(index) {
   print(paste0('#####   predicting from bootstrapped models   #####')) 
   
   ## predict from each of the bootstrapped models
-  boots <- lapply(sdm$Bootstrapped_models, FUN = function(x) predict(env_dat, x, type=type, index=index))
-  boot_out <- do.call("stack", boots)
+  ## different workflow for lrReg and other methods
+  if(model != 'lrReg') {
+    
+    boots_out <- raster::stack(lapply(sdm$Bootstrapped_models, FUN = function(x) predict(env_dat, x, type=type, index=index)))
+    
+    ## quantiles
+    print(paste0('#####   getting quantiles   #####'))
+    mean_preds <- calc(boots_out, fun = mean, na.rm = T)
+    quant_preds <- calc(boots_out, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
+    rnge <- quant_preds[[2]]-quant_preds[[1]]
+    
+    
+  } else if(model == 'lrReg') { 
+    
+    ## convert variables to matrix
+    covsMat <- as.matrix(rasterToPoints(ht)) # convert variables to matrix
+    
+    ## predict from lrReg model
+    boots <- stack(lapply(sdm$Bootstrapped_models, FUN = function(x) {
+      
+      pred <- predict(x, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
+      
+      pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
+      
+      if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
+      
+      pred_rast <- rasterize(pred[, 1:2], ht[[1]], field = pred[, 3]) # turn into a raster of probabilities
+      
+      ## return predictions
+      return(pred_rast)
+      
+    }))
+    
+    ## check for intercept-only models
+    uniqueVals <-lapply(1:k,
+                        function(x) { length(cellStats(boots[[x]], unique)) })
+    
+    drop <- which(uniqueVals <= 2) ## i.e. the mean and NA
+    
+    # assign intercept only models an AUC of NULL - important for weighted average later
+    if(any(drop)){
+      
+      sdm$AUC[drop] <- NA
+      
+      print(paste("Dropping", length(drop), "intercept-only model(s). Intercept-only models are given an AUC value of NA so they can be identified.
+                        Where 1:(k-1) models are intercept only, only the non-intercept models are included in the final average. Where all models are intercept-only,
+                        their predictions are returned but should not be used."))
+      
+    }
+    
+    
+    if (length(drop) == k | length(drop) == 0) {
+      
+      ## quantiles
+      print(paste0('#####   getting quantiles   #####'))
+      mean_preds <- mean(boots) # where all models are intercept-only, takes the mean to avoid errors later but AUC scores are NA which means they are dropped for final ensembles
+      quant_preds <- calc(boots, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
+      rnge <- quant_preds[[2]]-quant_preds[[1]]
+      
+      
+    } else {
+      
+      mean_preds <- mean(boots[[-drop]])
+      quant_preds <- calc(boots[[-drop]], fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
+      rnge <- quant_preds[[2]]-quant_preds[[1]]
+      
+    }
+    
+  }
   
-  # ## predict from lrReg models
-  # if(model == 'lrReg'){ ### work out later!
-  #   ## predict from lrReg model
-  #   pred <- predict(mod, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
-  #   
-  #   pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
-  #   
-  #   if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
-  #   
-  #   pred_rast <- rasterize(pred[, 1:2], climDat[[1]], field = pred[, 3]) # turn into a raster of probabilities
-  #   
-  #   ## store the predictions from lrReg
-  #   lrReg_pred[[i]] <- pred_rast 
-  #   
-  # }
   
-  ## quantiles
-  print(paste0('#####   getting quantiles   #####'))
-  mean_preds <- calc(boot_out, fun = mean, na.rm = T)
-  quant_preds <- calc(boot_out, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-  rnge <- quant_preds[[2]]-quant_preds[[1]]
-  
-  model_output <- list(model = model,
-                       sdm_output = sdm)
-  
-  ## save files
-  species_name <- gsub(pattern = ' ', replacement = '_', species)
+  ## save files ##
+  species_name <- gsub(pattern = ' ', replacement = '_', species) # get species name without space
   
   # save prediction raster
   print("#####     Saving prediction raster     #####")
@@ -111,6 +154,12 @@ slurm_sdm_boot <- function(index) {
   
   # save subset model output
   print("#####     Saving model output     #####")
+  
+  # outout of model to store
+  model_output <- list(species = species_name,
+                       model = model,
+                       sdm_output = sdm)
+  
   save(model_output, file = paste0(outPath, model, "_SDMs_", species_name, 
                                    ".rdata"))
   
