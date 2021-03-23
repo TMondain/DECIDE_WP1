@@ -42,19 +42,20 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     allDat_loc <- rbind(pres, ab)
     
     
-    #### remove any columns with only 0 values - useless for the models
-    # I suppose I could change the threshold for 'importance', 
-    # i.e. remove variables that have very few unique values although 
-    # would have to be careful with not removing the presence absence column
-    if(any(colSums(abs(allDat)) == 0)){
-      
-      print(paste("!!  Removing variables that have only 0 values. variables removed = ", 
-                  names(allDat)[colSums(abs(allDat)) == 0], " !!"))
-      
-      allDat <- allDat[, colSums(abs(allDat)) != 0] # only keep columns that have some values in 
-      allDat_loc <- allDat_loc[, colSums(abs(allDat_loc)) != 0] # only keep columns that have some values in 
-      
-    }
+    # #### remove any columns with only 0 values - useless for the models
+    # # I suppose I could change the threshold for 'importance', 
+    # # i.e. remove variables that have very few unique values although 
+    # # would have to be careful with not removing the presence absence column
+    # # !!  Not sure this works with the predict function (only tested for lrReg)
+    # if(any(colSums(abs(allDat)) == 0)){
+    #   
+    #   print(paste("!!  Removing variables that have only 0 values. variables removed = ", 
+    #               names(allDat)[colSums(abs(allDat)) == 0], " !!"))
+    #   
+    #   allDat <- allDat[, colSums(abs(allDat)) != 0] # only keep columns that have some values in 
+    #   allDat_loc <- allDat_loc[, colSums(abs(allDat_loc)) != 0] # only keep columns that have some values in 
+    #   
+    # }
     
     
     # ## raster layer needed as matrix for lrReg model
@@ -265,10 +266,12 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     out <- NULL
     out <- list(species, nRec,
                 auc_val, meanAUC, k, 
-                allDat_loc, e, mods_out)
+                # allDat_loc, ## taken out to see if it reduces file sizes
+                e, mods_out)
     names(out) <- c("Species", "Number of records", 
                     "AUC", "meanAUC", "Number of folds for validation",
-                    "Data", "Model_evaluation", "Bootstrapped_models")
+                    # "Data", 
+                    "Model_evaluation", "Bootstrapped_models")
     
     if (write == TRUE) {
       print(species)
