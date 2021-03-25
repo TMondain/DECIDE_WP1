@@ -3,7 +3,7 @@
 ###'
 
 fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F, prediction = TRUE,
-                 knots = -1){ 
+                 knots_gam = -1){ 
   
   # select species
   ind <- which(names(spData) == species)
@@ -122,7 +122,9 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         ## set the weights argument for models
         if ((model == "lrReg"|model == 'lr'|
              model == "gam"|model == "rf") & nRec != nrow(ab)){
+          
           weights <- c(rep(1, length(train$val[train$val == 1])), rep(prop, length(train$val[train$val == 0])))
+          
         } else if(nRec == nrow(ab)){ weights <- NULL } 
         
         test <- allDat[folds == i, ]
@@ -170,21 +172,21 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           
           # drop variables according to number of knots asked for
           # -1 is basically 9 knots
-          if(knots == -1) {
+          if(knots_gam == -1) {
             v_keep <- ks[ks$k > 11,]
             
             print(paste("variable dropped =", ks$variable[!ks$variable %in% v_keep$variable]))
           }
           
           # any others just keep the variables with over the number of knots
-          if(knots > 0) {
-            v_keep <- ks[ks$k > (knots+3),]
+          if(knots_gam > 0) {
+            v_keep <- ks[ks$k > (knots_gam+3),]
             print(paste("variable dropped =", ks$variable[!ks$variable %in% v_keep$variable]))
           }
           # v_keep
           
           form <- as.formula(paste0("val ~ s(", paste(v_keep$variable,
-                                                      ", k = ", knots) %>% #,
+                                                      ", k = ", knots_gam) %>% #,
                                       # v_keep$knts) %>%
                                       paste0(collapse = ") + s("), ")"))
           # form
