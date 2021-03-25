@@ -74,6 +74,8 @@ slurm_sdm_boot <- function(index) {
     
   } else if(model == 'lrReg') { 
     
+    print(paste0('#####   predicting for lrReg bootstrapped models   #####'))
+    
     ## convert variables to matrix
     covsMat <- as.matrix(rasterToPoints(ht)) # convert variables to matrix
     
@@ -97,7 +99,7 @@ slurm_sdm_boot <- function(index) {
     uniqueVals <-lapply(1:k,
                         function(x) { length(cellStats(boots[[x]], unique)) })
     
-    drop <- which(uniqueVals <= 2) ## i.e. the mean and NA
+    drop <- which(uniqueVals <= 2) ## i.e. the mean and NA, because with intercept-only models the only values are 0.5 and NA
     
     # assign intercept only models an AUC of NULL - important for weighted average later
     if(any(drop)){
@@ -114,7 +116,7 @@ slurm_sdm_boot <- function(index) {
     if (length(drop) == k | length(drop) == 0) {
       
       ## quantiles
-      print(paste0('#####   getting quantiles   #####'))
+      print(paste0('#####   getting quantiles lrReg   #####'))
       mean_preds <- mean(boots) # where all models are intercept-only, takes the mean to avoid errors later but AUC scores are NA which means they are dropped for final ensembles
       quant_preds <- calc(boots, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
       rnge <- quant_preds[[2]]-quant_preds[[1]]
@@ -122,14 +124,17 @@ slurm_sdm_boot <- function(index) {
       
     } else {
       
+      print(paste0('#####   getting quantiles lrReg   #####'))
       mean_preds <- mean(boots[[-drop]])
       quant_preds <- calc(boots[[-drop]], fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
       rnge <- quant_preds[[2]]-quant_preds[[1]]
       
     }
     
+    ## if some models were intercept-only then recalculate k (number of models used)
+    k <- k - length(drop)
+    
   }
-  
   
   ## save files ##
   species_name <- gsub(pattern = ' ', replacement = '_', species) # get species name without space
@@ -158,7 +163,8 @@ slurm_sdm_boot <- function(index) {
   # outout of model to store
   model_output <- list(species = species_name,
                        model = model,
-                       sdm_output = sdm)
+                       sdm_output = sdm,
+                       number_validations = k)
   
   save(model_output, file = paste0(outPath, model, "_SDMs_", species_name, 
                                    ".rdata"))
