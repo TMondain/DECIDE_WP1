@@ -27,7 +27,7 @@ slurm_sdm_boot <- function(index) {
   k = 10
   
   # number of knots for gam
-  knots = 4
+  knots_gam = 4
   
   # where to save at the end
   outPath = "/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/SDM_Bootstrap_lr/"
@@ -43,7 +43,7 @@ slurm_sdm_boot <- function(index) {
   
   # run the model of interest
   sdm <- fsdm(species = species, model = model, 
-              climDat = env_dat, spData = ab1, knots = knots,
+              climDat = env_dat, spData = ab1, knots_gam = knots_gam,
               k = k, # number of bootstraps
               write = F, outPath = outPath)
   
@@ -77,7 +77,7 @@ slurm_sdm_boot <- function(index) {
     print(paste0('#####   predicting for lrReg bootstrapped models   #####'))
     
     ## convert variables to matrix
-    covsMat <- as.matrix(rasterToPoints(ht)) # convert variables to matrix
+    covsMat <- as.matrix(rasterToPoints(env_dat)) # convert variables to matrix
     
     ## predict from lrReg model
     boots <- stack(lapply(sdm$Bootstrapped_models, FUN = function(x) {
@@ -88,7 +88,7 @@ slurm_sdm_boot <- function(index) {
       
       if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
       
-      pred_rast <- rasterize(pred[, 1:2], ht[[1]], field = pred[, 3]) # turn into a raster of probabilities
+      pred_rast <- rasterize(pred[, 1:2], env_dat[[1]], field = pred[, 3]) # turn into a raster of probabilities
       
       ## return predictions
       return(pred_rast)
@@ -137,6 +137,7 @@ slurm_sdm_boot <- function(index) {
   }
   
   ## save files ##
+  print("#####     Saving files     #####")
   species_name <- gsub(pattern = ' ', replacement = '_', species) # get species name without space
   
   # save prediction raster
@@ -157,8 +158,22 @@ slurm_sdm_boot <- function(index) {
               filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilerange.grd"),
               format = 'raster', overwrite = T)
   
+  # write AUC to file for easy-access
+  print("#####     Writing AUC to file     #####")
+  write.csv(x = data.frame(raw_AUC = sdm$AUC,
+                           meanAUC = sdm$meanAUC),
+            file = paste0(outPath, model, "_SDMs_", species_name, "_AUC_values.csv"))
+  
+  # write data to file too
+  print("#####     Writing data to file     #####")
+  write.csv(x = sdm$Data,
+            file = paste0(outPath, model, "_SDMs_", species_name, "_Data.csv"))
+
   # save subset model output
   print("#####     Saving model output     #####")
+  
+  # remove data from model output
+  sdm$Data <- NULL
   
   # outout of model to store
   model_output <- list(species = species_name,
