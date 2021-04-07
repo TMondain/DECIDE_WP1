@@ -68,7 +68,27 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     
     ## determine the weights argument for all models
     if ((model != "lrReg" & model != 'lr' & model != "gam" & model != "rf") & nRec != nrow(ab)) { 
-      warning("Prevalence is not 0.5 and no weights are applied to account for this. Currently weights are only applied where model = lrReg, lr, gam or rf")}
+      
+      warning("Prevalence is not 0.5 and no weights are applied to account for this. Currently weights are only applied where model = lrReg, lr, gam or rf")
+      
+      if(model == 'me'){
+        
+        warning("Maxent ('me') models work best with equal number of presences and absences, matching the number of absences to the number of records")
+        
+        ab <- ab[sample(x = 1:nrow(ab), size = nrow(pres)),]
+        
+        # get a data frame with the lat-lon coordinates
+        allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
+        allDat_loc <- rbind(pres, ab)
+        
+      } else if(model != "lrReg" | model != 'lr' | model != "gam" | model != "rf"){
+        
+        stop("Model is not one of lr, lrReg, me, gam or rf. Stopping model run")
+        
+      }
+      
+      
+    }
     
     if ((model == "lrReg"|model == 'lr'|model == "gam"|model == "rf") & nRec != nrow(ab)) {
       
@@ -79,6 +99,14 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       prop <- nRec / nAb
       
       print(paste("Absence weighting:", prop))
+      
+    } else if(model == 'me') {
+      
+      prop <- NULL 
+      
+    } else { 
+      
+      stop('Model specified not accepted by fitSDM (problem with prop calculation)')
       
     }
     
@@ -268,11 +296,11 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
     out <- NULL
     out <- list(species, nRec,
                 auc_val, meanAUC, k, 
-                # allDat_loc, ## taken out to see if it reduces file sizes
+                allDat_loc, ## taken out to see if it reduces file sizes
                 e, mods_out)
     names(out) <- c("Species", "Number of records", 
                     "AUC", "meanAUC", "Number of folds for validation",
-                    # "Data", 
+                    "Data",
                     "Model_evaluation", "Bootstrapped_models")
     
     if (write == TRUE) {
@@ -314,7 +342,7 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
       sampInd <- sample(1:nrow(ab), nrow(pres))
     } else {
       
-      if (nAbs <= nrow(pres)){ # if presences > nAbs, then increase nAbs to match number of presences  
+      if (nAbs <= nrow(pres)){ # if presences > nAbs argument, then increase nAbs to match number of presences  
         sampInd <- sample(1:nrow(ab), nrow(pres))
       } else if (nAbs <= nrow(ab) & nAbs >= nrow(pres)) {
         sampInd <- sample(1:nrow(ab), nAbs)
