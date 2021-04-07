@@ -14,11 +14,17 @@ library(ranger)
 library(mgcv)
 library(glmnet)
 library(PresenceAbsence)
+library(ecospat)
 source('scripts/functions/Edited_Rob_Functions.R')
 
 
-ed <- raster::stack("data/environmental_data/edat_nocorrs.gri")
+ed <- raster::stack("data/environmental_data/edat_nocorrs_nosea.gri")
 # plot(ed[[33]])
+
+# ed2 <- dropLayer(ed, 1) # drop sea
+# 
+# raster::writeRaster(ed2, filename = "data/environmental_data/edat_nocorrs_nosea.grd",
+#                     format = 'raster')
 
 names(ed)
 
@@ -162,7 +168,7 @@ names(ab1) <- spp
 spp_lr_out <- list()
 
 system.time(
-  for(s in 1:3){
+  for(s in 2){
     print(paste(s, spp[s], sep = " "))
     
     if(is.null(ab1[[s]])){
@@ -170,9 +176,9 @@ system.time(
       next
     }
     
-    sdm_lr <- fsdm(species = spp[s], model = "lrReg",
-                   climDat = ht, spData = ab1, knots = -1,
-                   k = 10,
+    sdm_lr <- fsdm(species = spp[s], model = "me",
+                   climDat = ht, spData = ab1, knots_gam = 4,
+                   k = 2, 
                    write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")
     
     # se_out <- predict(ht, sdm_lr$Model, type = "response", se.fit = TRUE, index = 2)
@@ -190,6 +196,22 @@ for(a in 1:3){
 
 (spp_lr_out[[3]]$Bootstrapped_models[[1]])
 
+
+## dfBetas for evaluating influence of each point
+?dfbeta
+influence.measures(spp_lr_out[[2]]$Bootstrapped_models[[1]])
+
+dfbet <- (dfbetas(spp_lr_out[[2]]$Bootstrapped_models[[1]]))
+head(dfbet)
+
+# cook's distance across all parameters
+cooks <- cooks.distance(spp_lr_out[[2]]$Bootstrapped_models[[1]])
+head(cooks)
+
+cooks <-  do.call('cbind', lapply(spp_lr_out[[1]]$Bootstrapped_models, FUN = cooks.distance))
+
+# can't do dfbeta across different bootstrapped mdoels because the data isn't the same
+# for each model run (because of the sub-sampling)
 
 ## predict from bootstrapped models for lrReg
 
