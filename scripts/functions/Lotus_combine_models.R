@@ -2,142 +2,168 @@
 ###   Combine predictions from different models on lotus
 
 
-#####     1. setup
-taxa = 'moth'
-main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
-output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs')
-models = c('lr', 'lrReg', 'gam', 'rf', 'me')
-pseudoabs_type = '10000nAbs'# which model run name to go through
-
-auc_cutoff = 0.75 ## just a suggestion
 
 
-# get species names
-if(taxa == 'moth'){
+
+calculate_ensemble <- function(name_index){
   
-  load("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_unthinned_10000nAbs.rdata") ## moths
-  names <- gsub(pattern = ' ', 
-                replacement = '_',
-                x = names(ab1))
   
-} else if(taxa == 'butterfly'){
+  ### 1. parameters for function
+  taxa = 'moth'
+  pseudoabs_type = '10000nAbs'# which model run name to go through
+  auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidliy high so might not be a problem)
   
-  load("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_unthinned_10000nAbs.rdata") ## butterflies
-  names <- gsub(pattern = ' ', 
-                replacement = '_',
-                x =  names(res_out))
+  ## no need to change these
+  main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
+  output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/')
+  models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
-} else {print('whoooaaaahhhh there boy, du calme!')}
-
-
-#####    2. start loop by going through all the names
-
-# # sdm outputs for each species
-# species_stack <- list()
-
-# error outputs
-error_out <- list()
-
-# model outputs
-mod_pred_out <- list()
-qrange_out <- list()
-auc_out <- list()
-
-for(n in 1:length(names)){
   
-  print(names[n])
+  ### 2. setup storage for model loops
+  # error outputs
+  error_out <- list()
   
-  # initiate model list within for loop so that it gets replaced when starting a new species
-  # otherwise we might get some weird overlaps
-  model_stack <- list()
+  # model outputs
+  mod_pred_out <- list()
+  qrange_out <- list()
+  auc_out <- list()
   errored_models <- list()
   
-  # go through each model in turn
+  
+  ### 3. get names and species of interest 
+  if(taxa == 'moth'){
+    
+    load("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_unthinned_10000nAbs.rdata") ## moths
+    names <- gsub(pattern = ' ', 
+                  replacement = '_',
+                  x = names(ab1))
+    
+  } else if(taxa == 'butterfly'){
+    
+    load("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_unthinned_10000nAbs.rdata") ## butterflies
+    names <- gsub(pattern = ' ', 
+                  replacement = '_',
+                  x =  names(res_out))
+    
+  } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
+  
+  
+  print(names[name_index])
+  
+  
+  ### 4. Go through each model in turn
   for(m in 1:length(models)){
     
     ### first, check that the model for that species exists
-    ### if it doesn't, skip to next species
+    ### if it doesn't, skip to next model
     {check_models <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                                pattern = paste0(names[n]),
+                                pattern = paste0(names[name_index]),
                                 full.names = TRUE)
     
     if(length(check_models)<=1){
       
-      print(paste('!!!   model', models[m], 'failed for species', names[n], '  !!!'))
+      print(paste('!!!   model', models[m], 'failed for species', names[name_index], '  !!!'))
       
       errored_models[[m]] <- data.frame(taxa = taxa, 
-                                        species = names[n], 
+                                        species = names[name_index], 
                                         model = models[m])
       
       next
     }}
     
     
-    ### get the mean predictions
+    ### load the mean predictions
     mp <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                     pattern = paste0(names[n], "_meanpred.grd"),
+                     pattern = paste0(names[name_index], "_meanpred.grd"),
                      full.names = TRUE)
     
     mod_preds <- raster(mp)
-    names(mod_preds) <- paste0(names[n], '_', models[m],'_mean_pred')
+    names(mod_preds) <- paste0(names[name_index], '_', models[m],'_mean_pred')
     mod_pred_out[[m]] <- mod_preds
     
-    ### get the quantile range
+    ### load the quantile range
     qr <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                     pattern = paste0(names[n], "_quantilerange.grd"),
+                     pattern = paste0(names[name_index], "_quantilerange.grd"),
                      full.names = TRUE)
     
     qrange <- raster(qr)
-    names(qrange) <- paste0(names[n], '_', models[m], '_quantile_range')
+    names(qrange) <- paste0(names[name_index], '_', models[m], '_quantile_range')
     qrange_out[[m]] <- qrange 
     
-    ### get the auc values
+    ### load the auc values
     aucval <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                         pattern = paste0(names[n], "_AUC_values.csv"),
+                         pattern = paste0(names[name_index], "_AUC_values.csv"),
                          full.names = TRUE)
     
     auc_val <- read.csv(aucval)
-    auc_val$model_id <- paste0(names[n], '_', models[m])
+    auc_val$model_id <- paste0(names[name_index], '_', models[m])
     auc_out[[m]] <- auc_val
     
     
   }
   
-  # store models that errored
-  error_out[[n]] <- do.call('rbind', errored_models)
+  if(!length(mod_pred_out)){ # stop run if no models worked for a given species
+    
+    stop(paste("No models ran for species", names[name_index]))
+    
+  }
   
   # get things ready for combining
   means <- do.call('stack', mod_pred_out)
   qranges <- do.call('stack', qrange_out)
   
-  # get auc into vector format
-  aucs <- do.call('c',sapply(auc_out, FUN=function(x) unique(x$meanAUC))) # removes NULL objects  
+  # change auc into vector format for weighted average
+  aucs <- do.call('c', sapply(auc_out, FUN=function(x) unique(x$meanAUC))) # removes NULL objects  
   
-  # check that number of entries match
+  
+  # check that number of entries match between raster and auc
   # they should already be in the correct order
-  ####   Store the output so we know which models were used - although should get that from the AUC table
   
+  
+  
+  ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
+  auc_out <- do.call(rbind, auc_out)[,3:4] %>% 
+    unique() %>% 
+    filter(meanAUC >= auc_cutoff)
+  
+  write.csv(auc_out, 
+            file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
   
   # check the auc values and drop any bad models
-  if(any(aucs < 0.75)){
+  if(any(aucs < auc_cutoff)){
     
-    means <- dropLayer(means, which(aucs < 0.75))
+    means <- dropLayer(means, which(aucs < 0.75)) # which() provides the index of which ones meet the statement
     qranges <- dropLayer(qranges, which(aucs < 0.75))
     
     
   }
   
-  #### create average model prediction 
-  wt_mean <- raster::weighted.mean(x=means, w = aucs)
-  wt_qr <- raster::weighted.mean(x=qranges, w = aucs)
+  
+  ### 5. Create average model prediction 
+  print("#####     calculating weighted ensemble raster     #####")
+  wt_mean <- raster::weighted.mean(x = means, w = aucs)
+  wt_qr <- raster::weighted.mean(x = qranges, w = aucs)
+  
   
   ## save the outputs
+  print("#####     Saving prediction raster     #####")
+  writeRaster(x = wt_mean, 
+              filename = paste0(output_directory, species_name, "_weightedmean.grd"),
+              format = 'raster', overwrite = T)
+  
+  writeRaster(x = wt_qr, 
+              filename = paste0(output_directory, species_name, "_weightedvariation.grd"),
+              format = 'raster', overwrite = T)
+  
+  
+  # store models that failed
+  error_out <- do.call('rbind', errored_models)
+  write.csv(error_out, 
+            file = paste0(output_directory, names[name_index], '_failed_models.csv'))
   
 }
 
 
-
-error_df <- do.call('rbind', error_out)
 
 
 
