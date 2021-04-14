@@ -1,22 +1,49 @@
+## project directory
+setwd("~/DECIDE/DECIDE_WP1")
 
 ###   Combine predictions from different models on lotus
+library(tidyverse)
+library(raster)
 
+#####  Get parameters
+# use the names from the pseudoabsences
 
+# taxa for slurm output and parameter loading
+# - still need to change taxa within function 
+taxa = 'butterfly'
+pseudoabs_type = '10000nAbs' ## same, still need to change within function when changing
 
-
-
-calculate_ensemble <- function(name_index){
+if(taxa == 'moth'){
   
+  ## for moths
+  load('scripts/lotus/moth/pseudoabsences/moth_PA_unthinned_10000nAbs.rdata')
+  pars <- data.frame(name_index = seq(1, length(names(ab1))))
+  
+} else if(taxa == 'butterfly'){
+  
+  ## for butterflies
+  load('scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_PA_unthinned_10000nAbs.rdata')
+  pars <- data.frame(name_index = seq(1, length(names(res_out))))
+  
+}
+
+
+
+calculate_ensemble <- function(name_index) {
+  
+  require(tidyverse)
+  require(raster)
   
   ### 1. parameters for function
-  taxa = 'moth'
-  pseudoabs_type = '10000nAbs'# which model run name to go through
-  auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidliy high so might not be a problem)
+  taxa = 'butterfly' # moth
+  pseudoabs_type = '10000nAbs' # which model run name to go through
+  auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
+  models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
-  ## no need to change these
+  
+  ## no need to change these unless changing directories
   main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
   output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/')
-  models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
   
   ### 2. setup storage for model loops
@@ -113,12 +140,11 @@ calculate_ensemble <- function(name_index){
   qranges <- do.call('stack', qrange_out)
   
   # change auc into vector format for weighted average
-  aucs <- do.call('c', sapply(auc_out, FUN=function(x) unique(x$meanAUC))) # removes NULL objects  
-  
+  aucs <- do.call('c', lapply(auc_out, FUN=function(x) unique(x$meanAUC))) # removes NULL objects
   
   # check that number of entries match between raster and auc
   # they should already be in the correct order
-  
+  if(length(aucs) != nlayers(means)) {stop('Number of AUC weights does not match number of models')}
   
   
   ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
@@ -135,6 +161,7 @@ calculate_ensemble <- function(name_index){
     means <- dropLayer(means, which(aucs < 0.75)) # which() provides the index of which ones meet the statement
     qranges <- dropLayer(qranges, which(aucs < 0.75))
     
+    aucs <- aucs[aucs>=auc_cutoff] # remove aucs < cutoff
     
   }
   
@@ -165,6 +192,21 @@ calculate_ensemble <- function(name_index){
 
 
 
+
+#####     The script to create the job submission files
+setwd(paste0('scripts/lotus/', taxa, '/combine_models_scripts'))
+
+sdm_slurm <- slurm_apply(calculate_ensemble,
+                         params = pars,
+                         jobname = paste0(taxa, "_weighted_ensemble"),
+                         nodes = length(unique(pars$name_index)),
+                         cpus_per_node = 1,
+                         slurm_options = list(partition = "short-serial",
+                                              time = "23:59:59",
+                                              mem = "30000",
+                                              error = paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/', taxa, '/combined_model_outputs/error/combinmod_', pseudoabs_type,'-%j-%a.out')),
+                         rscript_path = '',
+                         submit = F)
 
 
 
