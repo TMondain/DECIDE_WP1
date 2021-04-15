@@ -81,6 +81,12 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
         allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
         allDat_loc <- rbind(pres, ab)
         
+        # match the number of absences to presences in the spDat 
+        spDat$pseudoAbsence <- spDat$pseudoAbsence[sample(x = 1:nrow(spDat$pseudoAbsence),
+                                                          size = nrow(spDat$Presence)),]
+        
+        
+        
       } else if(model != "lrReg" | model != 'lr' | model != "gam" | model != "rf"){
         
         stop("Model is not one of lr, lrReg, me, gam or rf. Stopping model run")
@@ -330,7 +336,7 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     
     ab <- dat[dat$species != species, c("lon", "lat")]
     
-    ab <- ab[!ab %in% pres]
+    ab <- ab[!ab %in% pres] # remove all the abesences from the same places as presences
     
     if (nrow(ab) < nrow(pres)) {
       warning(paste("More presences than possible locations for absences. Consider lowering the number of pseudo absences. Reducing the number of presences for:", species, 
