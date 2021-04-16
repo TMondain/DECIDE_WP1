@@ -121,8 +121,8 @@ calculate_ensemble <- function(name_index) {
     
     ### load the quantile min max
     qmm <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                     pattern = paste0(names[name_index], "_quantilemaxmin.grd"),
-                     full.names = TRUE)
+                      pattern = paste0(names[name_index], "_quantilemaxmin.grd"),
+                      full.names = TRUE)
     
     qminmax <- raster::stack(qmm)
     names(qminmax) <- c(paste0(names[name_index], '_', models[m], '_quantile_min'),
@@ -164,33 +164,59 @@ calculate_ensemble <- function(name_index) {
   if(length(aucs) != nlayers(means)) {stop('Number of AUC weights does not match number of models')}
   
   
-  ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
-  auc_out <- do.call(rbind, auc_out)[,3:4] %>% 
-    unique() %>% 
-    mutate(used = ifelse(meanAUC >= auc_cutoff, 'used', 'dropped'))
+  ### check the auc values and drop any bad models
+  # if all models are below auc_cutoff then...
   
-  write.csv(auc_out, 
-            file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
-  
-  # check the auc values and drop any bad models
-  if(any(aucs < auc_cutoff)){
+  if(all(aucs < auc_cutoff)) {
+    
+    ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
+    auc_df <- do.call(rbind, auc_out)[,3:4] %>% 
+      unique() %>% 
+      mutate(used = 'used_bad_models')
+    
+    write.csv(auc_df, 
+              file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
+    
+  } else if(any(aucs < auc_cutoff) | all(aucs > auc_cutoff)) {
     
     means <- dropLayer(means, which(aucs < auc_cutoff)) # which() provides the index of which ones meet the statement
     qranges <- dropLayer(qranges, which(aucs < auc_cutoff))
     min_stack <- dropLayer(min_stack, which(aucs < auc_cutoff))
     max_stack <- dropLayer(max_stack, which(aucs < auc_cutoff))
     
+    # remove the auc values that fall below cutoff to make sure weighted.mean functions work
     aucs <- aucs[aucs>=auc_cutoff] # remove aucs < cutoff
     
-  }
+    ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
+    auc_df <- do.call(rbind, auc_out)[,3:4] %>% 
+      unique() %>% 
+      mutate(used = ifelse(meanAUC >= auc_cutoff, 'used', 'dropped'))
+    
+    if(any(auc_df$used == 'dropped')) {print(paste("!!  Some mdoels were dropped because they were lower than", 
+                                                   auc_cutoff, ". Models dropped:", auc_df$df[auc_df$used == 'dropped']))}
+    
+    write.csv(auc_df, 
+              file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
+    
+  } 
   
   
   ### 5. Create average model prediction 
-  print("#####     calculating weighted ensemble raster     #####")
-  wt_mean <- raster::weighted.mean(x = means, w = aucs)
-  wt_qr <- raster::weighted.mean(x = qranges, w = aucs)
+  if(length(aucs) > 1){ # if there is more than one model then calculate weighted average
+    
+    print("#####     calculating weighted ensemble raster     #####")
+    wt_mean <- raster::weighted.mean(x = means, w = aucs)
+    wt_qr <- raster::weighted.mean(x = qranges, w = aucs)
+    
+  } else { # otherwise just save the means as the wt_mean and ranges
+    
+    print("#####     Storing single model as a raster     #####")
+    wt_mean <- means
+    wt_qr <- qranges
+    
+  }
   
-  # max min quantiles
+  # Find the maximum and minimum quantiles across all models that ran
   min_quant <- calc(min_stack, min)
   max_quant <- calc(max_stack, max)
   
@@ -209,7 +235,7 @@ calculate_ensemble <- function(name_index) {
               filename = paste0(output_directory, names[name_index], "_weightedvariation.grd"),
               format = 'raster', overwrite = T)
   
-    writeRaster(x = mod_quant_rnge, 
+  writeRaster(x = mod_quant_rnge, 
               filename = paste0(output_directory, names[name_index], "_rangeensemblequantiles.grd"),
               format = 'raster', overwrite = T)
   
