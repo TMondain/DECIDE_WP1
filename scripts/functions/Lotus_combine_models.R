@@ -11,7 +11,7 @@ library(rslurm)
 
 # taxa for slurm output and parameter loading
 # - still need to change taxa within function 
-taxa = 'moth'
+taxa = 'butterfly'
 pseudoabs_type = '10000nAbs' ## same, still need to change within function when changing
 
 if(taxa == 'moth'){
@@ -36,7 +36,7 @@ calculate_ensemble <- function(name_index) {
   require(raster)
   
   ### 1. parameters for function
-  taxa = 'moth' # butterfly
+  taxa = 'butterfly' # moth butterfly
   pseudoabs_type = '10000nAbs' # which model run name to go through
   auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
   models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
@@ -65,14 +65,16 @@ calculate_ensemble <- function(name_index) {
     load("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_unthinned_10000nAbs.rdata") ## moths
     names <- gsub(pattern = ' ', 
                   replacement = '_',
-                  x = names(ab1))
+                  x = names(ab1)) %>% 
+      sort()
     
   } else if(taxa == 'butterfly'){
     
     load("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_unthinned_10000nAbs.rdata") ## butterflies
     names <- gsub(pattern = ' ', 
                   replacement = '_',
-                  x =  names(res_out))
+                  x =  names(res_out)) %>% 
+      sort()
     
   } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
   
@@ -148,13 +150,30 @@ calculate_ensemble <- function(name_index) {
     
   }
   
-  # get things ready for combining
-  means <- do.call('stack', mod_pred_out)
-  qranges <- do.call('stack', qrange_out)
+  ###   Combine means of models that ran
   
-  # get max and min of corresponding raster layers
-  min_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[1]]))
-  max_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[2]]))
+  if(any(sapply(qminmax_out, is.null))){
+    
+    # means and quantile range for each species
+    means <- do.call('stack', mod_pred_out[-which(sapply(mod_pred_out, is.null))])
+    qranges <- do.call('stack', qrange_out[-which(sapply(qrange_out, is.null))])
+    
+    # get max and min of corresponding raster layers
+    min_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[1]]))
+    max_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[2]]))
+    
+  } else if(!any(sapply(qminmax_out, is.null))){
+    
+    # means and quantile range for each species
+    means <- do.call('stack', mod_pred_out)
+    qranges <- do.call('stack', qrange_out)
+    
+    # get max and min of corresponding raster layers
+    min_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[1]]))
+    max_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[2]]))
+    
+  }
+  
   
   # change auc into vector format for weighted average
   aucs <- do.call('c', lapply(auc_out, FUN=function(x) unique(x$meanAUC))) # removes NULL objects
@@ -166,7 +185,6 @@ calculate_ensemble <- function(name_index) {
   
   ### check the auc values and drop any bad models
   # if all models are below auc_cutoff then...
-  
   if(all(aucs < auc_cutoff)) {
     
     ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
@@ -177,7 +195,7 @@ calculate_ensemble <- function(name_index) {
     write.csv(auc_df, 
               file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
     
-  } else if(any(aucs < auc_cutoff) | all(aucs > auc_cutoff)) {
+  } else if(any(aucs < auc_cutoff) | all(aucs > auc_cutoff)) { # this else if statement works with all cases where at least some of the models have AUC > than the cutoff.
     
     means <- dropLayer(means, which(aucs < auc_cutoff)) # which() provides the index of which ones meet the statement
     qranges <- dropLayer(qranges, which(aucs < auc_cutoff))
@@ -185,15 +203,15 @@ calculate_ensemble <- function(name_index) {
     max_stack <- dropLayer(max_stack, which(aucs < auc_cutoff))
     
     # remove the auc values that fall below cutoff to make sure weighted.mean functions work
-    aucs <- aucs[aucs>=auc_cutoff] # remove aucs < cutoff
+    auc_weights <- aucs[aucs>=auc_cutoff] # remove aucs < cutoff
     
     ####   Store the output auc scores so we know which models were used - although should get that from the AUC table
     auc_df <- do.call(rbind, auc_out)[,3:4] %>% 
       unique() %>% 
       mutate(used = ifelse(meanAUC >= auc_cutoff, 'used', 'dropped'))
     
-    if(any(auc_df$used == 'dropped')) {print(paste("!!  Some mdoels were dropped because they were lower than", 
-                                                   auc_cutoff, ". Models dropped:", auc_df$df[auc_df$used == 'dropped']))}
+    if(any(auc_df$used == 'dropped')) {print(paste("!!  Some models were dropped because they were lower than", 
+                                                   auc_cutoff, ". Models dropped:", auc_df$model_id[auc_df$used == 'dropped']))}
     
     write.csv(auc_df, 
               file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
@@ -202,11 +220,11 @@ calculate_ensemble <- function(name_index) {
   
   
   ### 5. Create average model prediction 
-  if(length(aucs) > 1){ # if there is more than one model then calculate weighted average
+  if(length(auc_weights) > 1){ # if there is more than one model then calculate weighted average
     
     print("#####     calculating weighted ensemble raster     #####")
-    wt_mean <- raster::weighted.mean(x = means, w = aucs)
-    wt_qr <- raster::weighted.mean(x = qranges, w = aucs)
+    wt_mean <- raster::weighted.mean(x = means, w = auc_weights)
+    wt_qr <- raster::weighted.mean(x = qranges, w = auc_weights)
     
   } else { # otherwise just save the means as the wt_mean and ranges
     
