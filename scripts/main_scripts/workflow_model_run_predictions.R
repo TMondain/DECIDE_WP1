@@ -152,7 +152,15 @@ sdm <- fsdm(species = species,
 #' summary values across all of the layers in the raster stack
 #' 
 #' Having a look at this with fresh eyes has made me realise that I could make 
-#' it into a function - now it's done
+#' it into a function - now it's done.
+#' Takes the bootstrapped models from the fsdm() function above,
+#' the model used to run the function above
+#' and the environmental data you want to predict onto (with the 
+#' same layers as used to run the models above)
+#' and outputs a three item list:
+#' the mean predictions across all of the bootstrapped modes
+#' the min and max quantiles (0.05 and 0.95)
+#' and the range between them
 
 get_predictions <- function(model_outs, 
                             model, # model that was run to create the models in model_outs
