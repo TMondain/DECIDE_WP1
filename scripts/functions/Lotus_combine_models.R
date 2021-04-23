@@ -12,18 +12,18 @@ library(rslurm)
 # taxa for slurm output and parameter loading
 # - still need to change taxa within function 
 taxa = 'butterfly'
-pseudoabs_type = '10000nAbs' ## same, still need to change within function when changing
+pseudoabs_type = 'unthinned_10000nAbs' ## same, still need to change within function when changing
 
 if(taxa == 'moth'){
   
   ## for moths
-  load('scripts/lotus/moth/pseudoabsences/moth_PA_unthinned_10000nAbs.rdata')
+  load(paste0("scripts/lotus/moth/pseudoabsences/moth_PA_", pseudoabs_type, ".rdata"))
   pars <- data.frame(name_index = seq(1, length(names(ab1))))
   
 } else if(taxa == 'butterfly'){
   
   ## for butterflies
-  load('scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_PA_unthinned_10000nAbs.rdata')
+  load(paste0("scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_PA_", pseudoabs_type, ".rdata"))
   pars <- data.frame(name_index = seq(1, length(names(res_out))))
   
 }
@@ -37,14 +37,14 @@ calculate_ensemble <- function(name_index) {
   
   ### 1. parameters for function
   taxa = 'butterfly' # moth butterfly
-  pseudoabs_type = '10000nAbs' # which model run name to go through
+  pseudoabs_type = 'unthinned_10000nAbs' # which model run name to go through
   auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
   models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
   
   ## no need to change these unless changing directories
   main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
-  output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/')
+  output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/', pseudoabs_type,'/')
   
   
   ### 2. setup storage for model loops
@@ -62,7 +62,7 @@ calculate_ensemble <- function(name_index) {
   ### 3. get names and species of interest 
   if(taxa == 'moth'){
     
-    load("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_unthinned_10000nAbs.rdata") ## moths
+    load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_", pseudoabs_type, ".rdata")) ## moths
     names <- gsub(pattern = ' ', 
                   replacement = '_',
                   x = names(ab1)) %>% 
@@ -70,7 +70,7 @@ calculate_ensemble <- function(name_index) {
     
   } else if(taxa == 'butterfly'){
     
-    load("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_unthinned_10000nAbs.rdata") ## butterflies
+    load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_", pseudoabs_type, ".rdata")) ## butterflies
     names <- gsub(pattern = ' ', 
                   replacement = '_',
                   x =  names(res_out)) %>% 
@@ -152,7 +152,7 @@ calculate_ensemble <- function(name_index) {
   
   ###   Combine means of models that ran
   
-  if(any(sapply(qminmax_out, is.null))){
+  if(any(sapply(mod_pred_out, is.null))){
     
     # means and quantile range for each species
     means <- do.call('stack', mod_pred_out[-which(sapply(mod_pred_out, is.null))])
@@ -162,7 +162,7 @@ calculate_ensemble <- function(name_index) {
     min_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[1]]))
     max_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[2]]))
     
-  } else if(!any(sapply(qminmax_out, is.null))){
+  } else if(!any(sapply(mod_pred_out, is.null))){
     
     # means and quantile range for each species
     means <- do.call('stack', mod_pred_out)
@@ -191,6 +191,9 @@ calculate_ensemble <- function(name_index) {
     auc_df <- do.call(rbind, auc_out)[,3:4] %>% 
       unique() %>% 
       mutate(used = 'used_bad_models')
+    
+    # need to create auc_weights function for the next if() statement to work when all models < cutoff
+    auc_weights <- aucs
     
     write.csv(auc_df, 
               file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
@@ -235,8 +238,19 @@ calculate_ensemble <- function(name_index) {
   }
   
   # Find the maximum and minimum quantiles across all models that ran
-  min_quant <- calc(min_stack, min)
-  max_quant <- calc(max_stack, max)
+  if(nlayers(min_stack)==1){
+    
+    # if only one model run then just store the min and max stacks
+    # as the quantile output - makes code run faster.
+    min_quant <- min_stack
+    max_quant <- max_stack
+    
+  } else if(nlayers(min_stack>1)){
+    
+    min_quant <- calc(min_stack, min)
+    max_quant <- calc(max_stack, max)
+    
+  }
   
   minmax_stack <- stack(min_quant, max_quant)
   names(minmax_stack) <- c('min_quant', 'max_quant')
@@ -246,22 +260,22 @@ calculate_ensemble <- function(name_index) {
   ## save the outputs
   print("#####     Saving prediction raster     #####")
   writeRaster(x = wt_mean, 
-              filename = paste0(output_directory, names[name_index], "_weightedmeanensemble.grd"),
+              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_weightedmeanensemble.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = wt_qr, 
-              filename = paste0(output_directory, names[name_index], "_weightedvariation.grd"),
+              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_weightedvariation.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = mod_quant_rnge, 
-              filename = paste0(output_directory, names[name_index], "_rangeensemblequantiles.grd"),
+              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_rangeensemblequantiles.grd"),
               format = 'raster', overwrite = T)
   
   
   # store models that failed
   error_out <- do.call('rbind', errored_models)
   write.csv(error_out, 
-            file = paste0(output_directory, names[name_index], '_failed_models.csv'))
+            file = paste0(output_directory, names[name_index], "_", pseudoabs_type, '_failed_models.csv'))
   
 }
 
@@ -273,7 +287,7 @@ setwd(paste0('scripts/lotus/', taxa, '/combine_models_scripts'))
 
 sdm_slurm <- slurm_apply(calculate_ensemble,
                          params = pars,
-                         jobname = paste0(taxa, "_weighted_ensemble"),
+                         jobname = paste0(taxa, "_", pseudoabs_type, "_weighted_ensemble"),
                          nodes = length(unique(pars$name_index)),
                          cpus_per_node = 1,
                          slurm_options = list(partition = "short-serial",
