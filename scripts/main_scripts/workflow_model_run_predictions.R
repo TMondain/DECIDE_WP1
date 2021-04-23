@@ -115,9 +115,10 @@ registerDoSEQ()
 names(ab1) <- spp
 
 
-#' Just going to do this for one species but it would be easy
-#' enough to go through each species in turn.
-#' 
+#' Just going to do this for one species but it would be easy enough
+#' to go through each species in turn or for each model in turn.
+#' On lotus, all the models are run separately (i.e. in different jobs)
+#' and then combined afterwards.
 #' 
 
 #' ## choose the model and species
@@ -125,9 +126,12 @@ names(ab1) <- spp
 # choose model 
 model = "lr" # one of ("lr", "lrReg", "rf", "gam", "me")
 
-# species
+# choose species
 species = spp[1]
 species
+
+# choose number of validations/bootstraps
+k = 2
 
 # run the model
 sdm <- fsdm(species = species, 
@@ -135,7 +139,7 @@ sdm <- fsdm(species = species,
             climDat = ht, 
             spData = ab1, 
             knots_gam = 4, # number of knots to use for GAM, = -1 for default
-            k = 2, # number of k-fold validations to do
+            k = k, # number of k-fold validations to do
             write = FALSE)
 
 
@@ -146,6 +150,9 @@ sdm <- fsdm(species = species,
 #' It takes a long time to run on my computer. Partly because of the predict()
 #' function taking a long time, but also th calc() function trying to get
 #' summary values across all of the layers in the raster stack
+#' 
+#' Having a look at this with fresh eyes has made me realise that I could make 
+#' this into a function - so I might do that soon.
 
 
 # choose the type and index for predict function
@@ -244,5 +251,11 @@ if(model != 'lrReg') {
 }
 
 
+
+
+
+#' ## Get the decide score
+#' For the moment, the decide score for a single species is just the probability
+#' of presence * the quantile range.
 
 
