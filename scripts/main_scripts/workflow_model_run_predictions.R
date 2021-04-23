@@ -252,10 +252,11 @@ if(model != 'lrReg') {
 
 
 
-
-
 #' ## Get the decide score
 #' For the moment, the decide score for a single species is just the probability
-#' of presence * the quantile range.
-
+#' of presence * the quantile range. So for a single species and single
+#' model, the decide score is:
+#' 
+decide <- mean_preds*rnge
+plot(decide)
 
