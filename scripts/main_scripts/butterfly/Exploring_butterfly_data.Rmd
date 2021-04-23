@@ -22,7 +22,7 @@ library(raster)
 library(lme4)
 
 # get list of files
-f <- list.files(path = 'C:/Users/thoval/OneDrive - NERC/Documents/DECIDE/DECIDE_WP1/data/raw_data/butterfly/', full.names = TRUE)
+f <- list.files(path = 'C:/Users/thoval/OneDrive - UKCEH/Documents 1/DECIDE/DECIDE_WP1/data/raw_data/butterfly/', full.names = TRUE)
 f
 
 # read subset of NBN data to test 2000 - 2010
