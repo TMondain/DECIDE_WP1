@@ -180,7 +180,7 @@ get_predictions <- function(model_outs,
   }
   
   # number of bootstraps that were run
-  k = length(model_outs)
+  k = length(model_outs$Bootstrapped_models)
   
   ## bootstrapped models
   print(paste0('#####   predicting from bootstrapped models   #####')) 
@@ -190,7 +190,7 @@ get_predictions <- function(model_outs,
   if(model != 'lrReg') {
     
     # predict from each of the bootstrapped models and stack them together
-    boots_out <- raster::stack(lapply(sdm$Bootstrapped_models, FUN = function(x) predict(env_data, x, type=type, index=index)))
+    boots_out <- raster::stack(lapply(model_outs$Bootstrapped_models, FUN = function(x) predict(env_data, x, type=type, index=index)))
     
     ## quantiles
     print(paste0('#####   getting quantiles   #####'))
@@ -207,7 +207,7 @@ get_predictions <- function(model_outs,
     covsMat <- as.matrix(rasterToPoints(env_data)) # convert variables to matrix
     
     ## predict from lrReg model
-    boots <- stack(lapply(sdm$Bootstrapped_models, FUN = function(x) {
+    boots <- stack(lapply(model_outs$Bootstrapped_models, FUN = function(x) {
       
       pred <- predict(x, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
       
@@ -231,7 +231,7 @@ get_predictions <- function(model_outs,
     # assign intercept only models an AUC of NULL - important for weighted average later
     if(any(drop)){
       
-      sdm$AUC[drop] <- NA
+      model_outs$AUC[drop] <- NA
       
       print(paste("Dropping", length(drop), "intercept-only model(s). Intercept-only models are given an AUC value of NA so they can be identified.
                         Where 1:(k-1) models are intercept only, only the non-intercept models are included in the final average. Where all models are intercept-only,
@@ -270,8 +270,8 @@ get_predictions <- function(model_outs,
 }
 
 
-mod_preds <- get_predictions(model_outs = sdm$Bootstrapped_models,
-                     model = 'lr', 
+mod_preds <- get_predictions(model_outs = sdm,
+                     model = model, 
                      env_data = ht)
 
 #' ## Get the decide score
