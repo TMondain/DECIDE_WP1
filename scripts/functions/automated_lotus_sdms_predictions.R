@@ -4,20 +4,32 @@ setwd("~/DECIDE/DECIDE_WP1") # to return to project directory
 library(rslurm)
 library(tidyverse)
 
+
+#####     CHANGE FOR EACH RUN     #####
+
 # taxa
 taxa = 'moth' # moth, butterfly
+
+## choose model of interest
+model = 'rf' # one of c('lr', 'gam', 'rf', 'me')
 
 # pseudoabsence name
 pa_name = 'PA_thinned_10000nAbs'
 
-# name of model to run
-model = 'me'# one of c('lr', 'gam', 'rf', 'me')
+# number of bootstraps
+k = 10
+
+# number of knots for gam
+knots_gam = 4
+
+
+#####    arguments for slurm_apply     #####
 
 # queue for lotus
-queue_name = 'long-serial'
+queue_name = 'short-serial'
 
 # time requirement
-time = '47:59:59'
+time = '23:59:59'
 
 # memory requirement in MB
 mem_req = 30000
@@ -37,7 +49,7 @@ if(taxa == 'moth'){
 }
 
 # get the parameters for function
-pars <- data.frame(name_index = seq(1, length(names(dfm_df))))
+pars <- data.frame(name_index = seq(1, length(unique(dfm_df$sp_n))))
 
 
 ## the function
@@ -51,44 +63,47 @@ slurm_sdm_boot <- function(name_index) {
   require(glmnet)
   source("/home/users/thoval/DECIDE/scripts/Edited_Rob_Functions.R")
   
- 
+  # read the file_for_lotus.csv
+  file_for_lotus <- read.csv('file_for_lotus.csv')
   
   
-  #####     CHANGE FOR EACH RUN     #####
+  #####     setting the parameters from the file for lotus     #####
   
   # taxa
-  taxa = 'moth' # moth, butterfly
+  taxa = file_for_lotus$taxa[name_index] #'moth' # moth, butterfly
   
   ## choose model of interest
-  model = 'me' # one of c('lr', 'gam', 'rf', 'me')
+  model = file_for_lotus$model[name_index] # 'rf' # one of c('lr', 'gam', 'rf', 'me')
   
   # pseudoabsence name
-  pa_name = 'PA_thinned_10000nAbs'
+  pa_name = file_for_lotus$pa_name[name_index] # 'PA_thinned_10000nAbs'
  
   # number of bootstraps
-  k = 10
+  k = file_for_lotus$k[name_index]
   
   # number of knots for gam
-  knots_gam = 4
+  knots_gam = file_for_lotus$knots_gam[name_index]
+  
   
   
   # where to save at the end
   outPath = paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/", taxa, "/SDM_Bootstrap_", model, "_", pa_name,"/")
   
-  # for the species of interest 
-  file_for_lotus = read.csv("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/",taxa, "/_rslurm_", model, "_", pa_name, "/file_for_lotus.csv")
+  # # load file with parameters
+  # file_for_lotus = read.csv(paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/", taxa, "/_rslurm_", model, "_", pa_name, "/file_for_lotus.csv"))
   
   # load environmental data
   env_dat <- raster::stack("/home/users/thoval/DECIDE/data/environmental_data/edat_nocorrs_nosea.gri")
   
+ 
   # load pseudoabsences based on taxa and name
   if(taxa == 'moth'){
     
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/", pa_name, ".rdata"))
+    load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/", taxa, '_', pa_name, ".rdata"))
     
   } else if(taxa == 'butterfly'){
     
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/", pa_name, ".rdata"))
+    load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/", taxa, '_', pa_name, ".rdata"))
     ab1 <- res_out
     
   }
@@ -116,100 +131,30 @@ slurm_sdm_boot <- function(name_index) {
   
   ## predict from each of the bootstrapped models
   ## different workflow for lrReg and other methods
-  if(model != 'lrReg') {
-    
-    boots_out <- raster::stack(lapply(sdm$Bootstrapped_models, FUN = function(x) predict(env_dat, x, type=type, index=index)))
-    
-    ## quantiles
-    print(paste0('#####   getting quantiles   #####'))
-    mean_preds <- calc(boots_out, fun = mean, na.rm = T)
-    quant_preds <- calc(boots_out, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-    rnge <- quant_preds[[2]]-quant_preds[[1]]
-    
-    
-  } else if(model == 'lrReg') { 
-    
-    print(paste0('#####   predicting for lrReg bootstrapped models   #####'))
-    
-    ## convert variables to matrix
-    covsMat <- as.matrix(rasterToPoints(env_dat)) # convert variables to matrix
-    
-    ## predict from lrReg model
-    boots <- stack(lapply(sdm$Bootstrapped_models, FUN = function(x) {
-      
-      pred <- predict(x, covsMat[, 3:ncol(covsMat)], type = "response") # predict from matrix
-      
-      pred <- as.matrix(cbind(covsMat[, 1:2], pred)) # combine predictions with east - norths
-      
-      if (any(is.na(pred[, 3]))) pred <- pred[-which(is.na(pred[,3])), ] # get rid of NAs
-      
-      pred_rast <- rasterize(pred[, 1:2], env_dat[[1]], field = pred[, 3]) # turn into a raster of probabilities
-      
-      ## return predictions
-      return(pred_rast)
-      
-    }))
-    
-    ## check for intercept-only models
-    uniqueVals <-lapply(1:k,
-                        function(x) { length(cellStats(boots[[x]], unique)) })
-    
-    drop <- which(uniqueVals <= 2) ## i.e. the mean and NA, because with intercept-only models the only values are 0.5 and NA
-    
-    # assign intercept only models an AUC of NULL - important for weighted average later
-    if(any(drop)){
-      
-      sdm$AUC[drop] <- NA
-      
-      print(paste("Dropping", length(drop), "intercept-only model(s). Intercept-only models are given an AUC value of NA so they can be identified.
-                        Where 1:(k-1) models are intercept only, only the non-intercept models are included in the final average. Where all models are intercept-only,
-                        their predictions are returned but should not be used."))
-      
-    }
-    
-    
-    if (length(drop) == k | length(drop) == 0) {
-      
-      ## quantiles
-      print(paste0('#####   getting quantiles lrReg   #####'))
-      mean_preds <- mean(boots) # where all models are intercept-only, takes the mean to avoid errors later but AUC scores are NA which means they are dropped for final ensembles
-      quant_preds <- calc(boots, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-      rnge <- quant_preds[[2]]-quant_preds[[1]]
-      
-      
-    } else {
-      
-      print(paste0('#####   getting quantiles lrReg   #####'))
-      mean_preds <- mean(boots[[-drop]])
-      quant_preds <- calc(boots[[-drop]], fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-      rnge <- quant_preds[[2]]-quant_preds[[1]]
-      
-    }
-    
-    ## if some models were intercept-only then recalculate k (number of models used)
-    k <- k - length(drop)
-    
-  }
+  mod_preds <- get_predictions(model_outs = sdm,
+                               model = model, 
+                               env_data = env_dat)
   
+ 
   ## save files ##
   print("#####     Saving files     #####")
   species_name <- gsub(pattern = ' ', replacement = '_', species) # get species name without space
   
   # save prediction raster
   print("#####     Saving prediction raster     #####")
-  writeRaster(x = mean_preds, 
+  writeRaster(x = mod_preds$mean_predictions, 
               filename = paste0(outPath, model, "_SDMs_", species_name, "_meanpred.grd"),
               format = 'raster', overwrite = T)
   
   # save quantile max min
   print("#####     Saving quantile max min raster     #####")
-  writeRaster(x = quant_preds, 
+  writeRaster(x = mod_preds$quant_minmax, 
               filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilemaxmin.grd"),
               format = 'raster', overwrite = T)
   
   # save quantile range raster
   print("#####     Saving quantile range raster     #####")
-  writeRaster(x = rnge, 
+  writeRaster(x = mod_preds$quant_range, 
               filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilerange.grd"),
               format = 'raster', overwrite = T)
   
@@ -259,7 +204,13 @@ sdm_slurm <- slurm_apply(slurm_sdm_boot,
                          rscript_path = '',
                          submit = F)
 
-file_for_lotus = data.frame(species = unique(dfm_df$sp_n))
+
+file_for_lotus = data.frame(species = unique(dfm_df$sp_n),
+                            taxa = rep(taxa, length = length(unique(dfm_df$sp_n))),
+                            model = rep(model, length = length(unique(dfm_df$sp_n))),
+                            pa_name = rep(pa_name, length = length(unique(dfm_df$sp_n))),
+                            k = rep(k, length = length(unique(dfm_df$sp_n))),
+                            knots_gam = rep(knots_gam, length = length(unique(dfm_df$sp_n))))
 head(file_for_lotus)
 
 write.csv(file_for_lotus, 
