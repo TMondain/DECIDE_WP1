@@ -172,3 +172,24 @@ get_error_logs <- function(taxa, failed_models, pseudoabs_type, models = c('lr',
   
 }
 
+
+
+
+#####      Workflow for checking
+
+# taxa
+taxa = 'butterfly'
+
+# pseudoabsence type (i.e. the model run)
+pa_name = 'PA_thinned_10000nAbs'
+
+# get the species names
+sp_name <- get_spp_names(taxa, pa_name)
+
+# check each species for failed models
+failed_mods <- get_failed_models(taxa, sp_name, pa_name)
+
+# get the associated error logs for each species
+error_logs <- get_error_logs(taxa, failed_mods, pa_name)
+
+error_logs
