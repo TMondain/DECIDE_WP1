@@ -73,6 +73,8 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       
       if(model == 'me'){
         
+        options(java.parameters = "-Xmx1g")
+        
         warning("Maxent ('me') models work best with equal number of presences and absences, matching the number of presences and absences")
         
         if(nrow(pres) > nrow(ab)){
