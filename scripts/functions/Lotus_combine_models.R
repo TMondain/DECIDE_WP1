@@ -49,7 +49,7 @@ calculate_ensemble <- function(name_index) {
   taxa = file_for_lotus$taxa[name_index] 
   
   # pseudoabsence type
-  pseudoabs_type = file_for_lotus$pa_name[name_index] # which model run name to go through
+  pseudoabs_type = file_for_lotus$pseudoabs_type[name_index] # which model run name to go through
   
   # auc cutoff for dropping models
   auc_cutoff = file_for_lotus$auc_cutoff[name_index] ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
@@ -94,7 +94,7 @@ calculate_ensemble <- function(name_index) {
   # } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
   
   
-  print(names[name_index])
+  print(names)
   
   
   ### 4. Go through each model in turn
@@ -103,15 +103,15 @@ calculate_ensemble <- function(name_index) {
     ### first, check that the model for that species exists
     ### if it doesn't, skip to next model
     {check_models <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                                pattern = paste0(names[name_index]),
+                                pattern = paste0(names),
                                 full.names = TRUE)
     
     if(length(check_models)<=1){
       
-      print(paste('!!!   model', models[m], 'failed for species', names[name_index], '  !!!'))
+      print(paste('!!!   model', models[m], 'failed for species', names, '  !!!'))
       
       errored_models[[m]] <- data.frame(taxa = taxa, 
-                                        species = names[name_index], 
+                                        species = names, 
                                         model = models[m])
       
       next
@@ -120,40 +120,40 @@ calculate_ensemble <- function(name_index) {
     
     ### load the mean predictions
     mp <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                     pattern = paste0(names[name_index], "_meanpred.grd"),
+                     pattern = paste0(names, "_meanpred.grd"),
                      full.names = TRUE)
     
     mod_preds <- raster(mp)
-    names(mod_preds) <- paste0(names[name_index], '_', models[m],'_mean_pred')
+    names(mod_preds) <- paste0(names, '_', models[m],'_mean_pred')
     mod_pred_out[[m]] <- mod_preds
     
     ### load the quantile range
     qr <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                     pattern = paste0(names[name_index], "_quantilerange.grd"),
+                     pattern = paste0(names, "_quantilerange.grd"),
                      full.names = TRUE)
     
     qrange <- raster(qr)
-    names(qrange) <- paste0(names[name_index], '_', models[m], '_quantile_range')
+    names(qrange) <- paste0(names, '_', models[m], '_quantile_range')
     qrange_out[[m]] <- qrange
     
     ### load the quantile min max
     qmm <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                      pattern = paste0(names[name_index], "_quantilemaxmin.grd"),
+                      pattern = paste0(names, "_quantilemaxmin.grd"),
                       full.names = TRUE)
     
     qminmax <- raster::stack(qmm)
-    names(qminmax) <- c(paste0(names[name_index], '_', models[m], '_quantile_min'),
-                        paste0(names[name_index], '_', models[m], '_quantile_max'))
+    names(qminmax) <- c(paste0(names, '_', models[m], '_quantile_min'),
+                        paste0(names, '_', models[m], '_quantile_max'))
     qminmax_out[[m]] <- qminmax
     
     
     ### load the auc values
     aucval <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                         pattern = paste0(names[name_index], "_AUC_values.csv"),
+                         pattern = paste0(names, "_AUC_values.csv"),
                          full.names = TRUE)
     
     auc_val <- read.csv(aucval)
-    auc_val$model_id <- paste0(names[name_index], '_', models[m])
+    auc_val$model_id <- paste0(names, '_', models[m])
     auc_out[[m]] <- auc_val
     
     
@@ -161,7 +161,7 @@ calculate_ensemble <- function(name_index) {
   
   if(!length(mod_pred_out)){ # stop run if no models worked for a given species
     
-    stop(paste("No models ran for species", names[name_index]))
+    stop(paste("No models ran for species", names))
     
   }
   
@@ -211,7 +211,7 @@ calculate_ensemble <- function(name_index) {
     auc_weights <- aucs
     
     write.csv(auc_df, 
-              file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
+              file = paste0(output_directory, names, '_aucOuts.csv'))
     
   } else if(any(aucs < auc_cutoff) | all(aucs > auc_cutoff)) { # this else if statement works with all cases where at least some of the models have AUC > than the cutoff.
     
@@ -232,7 +232,7 @@ calculate_ensemble <- function(name_index) {
                                                    auc_cutoff, ". Models dropped:", auc_df$model_id[auc_df$used == 'dropped']))}
     
     write.csv(auc_df, 
-              file = paste0(output_directory, names[name_index], '_aucOuts.csv'))
+              file = paste0(output_directory, names, '_aucOuts.csv'))
     
   } 
   
@@ -275,22 +275,22 @@ calculate_ensemble <- function(name_index) {
   ## save the outputs
   print("#####     Saving prediction raster     #####")
   writeRaster(x = wt_mean, 
-              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_weightedmeanensemble.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedmeanensemble.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = wt_qr, 
-              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_weightedvariation.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedvariation.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = mod_quant_rnge, 
-              filename = paste0(output_directory, names[name_index], "_", pseudoabs_type, "_rangeensemblequantiles.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_rangeensemblequantiles.grd"),
               format = 'raster', overwrite = T)
   
   
   # store models that failed
   error_out <- do.call('rbind', errored_models)
   write.csv(error_out, 
-            file = paste0(output_directory, names[name_index], "_", pseudoabs_type, '_failed_models.csv'))
+            file = paste0(output_directory, names, "_", pseudoabs_type, '_failed_models.csv'))
   
 }
 
