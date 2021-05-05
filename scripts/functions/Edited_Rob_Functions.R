@@ -73,9 +73,21 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       
       if(model == 'me'){
         
-        warning("Maxent ('me') models work best with equal number of presences and absences, matching the number of absences to the number of records")
+        warning("Maxent ('me') models work best with equal number of presences and absences, matching the number of presences and absences")
         
-        ab <- ab[sample(x = 1:nrow(ab), size = nrow(pres)),]
+        if(nrow(pres) > nrow(ab)){
+          
+          warning("Number of presences > number of absences, reducing number of presences to match absences")
+          
+          pres <- pres[sample(x = 1:nrow(pres), size = nrow(ab)),]
+          
+        } else if(nrow(pres) < nrow(ab)){
+          
+          warning("Number of abesences > number of presences, reducing number of presences to match absences")
+          
+          ab <- ab[sample(x = 1:nrow(ab), size = nrow(pres)),]
+          
+        }
         
         # get a data frame with the lat-lon coordinates
         allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
@@ -366,6 +378,9 @@ cpa <- function (spdat, species, minYear, maxYear, nAbs, matchPres = FALSE,
     ## if screenRaster is specified, check if any presence or absence points fall outside of the raster extent (i.e. they are NA).
     ## If some data fall outside of the extent of the covariates, drop them, and drop the equivalent number of absences or presences
     ## to ensure they are equal in number.
+    ## if matchPres == FALSE and screenRaster = TRUE then some species might have number Presence > number pseudoabsence
+    ## because absences might happen to fall in NA values
+    ## This is addressed in the fsdm() function
     
     if (!is.null(screenRaster)) {
       
