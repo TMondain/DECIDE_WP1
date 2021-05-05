@@ -73,7 +73,7 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
       
       if(model == 'me'){
         
-        options(java.parameters = "-Xmx1g")
+        options(java.parameters = "-Xmx3g")
         
         warning("Maxent ('me') models work best with equal number of presences and absences, matching the number of presences and absences")
         
@@ -83,17 +83,26 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
           
           pres <- pres[sample(x = 1:nrow(pres), size = nrow(ab)),]
           
+          # match the number of absences to presences in the spDat 
+          spDat$Presence <- spDat$Presence[sample(x = 1:nrow(spDat$Presence),
+                                                  size = nrow(spDat$pseudoAbsence)),]
+          
         } else if(nrow(pres) < nrow(ab)){
           
           warning("Number of abesences > number of presences, reducing number of presences to match absences")
           
           ab <- ab[sample(x = 1:nrow(ab), size = nrow(pres)),]
           
+          # match the number of absences to presences in the spDat 
+          spDat$pseudoAbsence <- spDat$pseudoAbsence[sample(x = 1:nrow(spDat$pseudoAbsence),
+                                                            size = nrow(spDat$Presence)),]
+          
         }
         
         # get a data frame with the lat-lon coordinates
         allDat <- rbind(pres[!names(pres) %in% c("lon", "lat")], ab[!names(ab) %in% c("lon", "lat")])
         allDat_loc <- rbind(pres, ab)
+        
         
         # match the number of absences to presences in the spDat 
         spDat$pseudoAbsence <- spDat$pseudoAbsence[sample(x = 1:nrow(spDat$pseudoAbsence),
