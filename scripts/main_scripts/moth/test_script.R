@@ -88,7 +88,7 @@ ht <- hbv_y
 # ## whole of UK
 # ht <- ed
 
-ht <- dropLayer(ht, 1) # drop sea
+# ht <- dropLayer(ht, 1) # drop sea
 
 # plot(ht[[1]])
 names(ht)
