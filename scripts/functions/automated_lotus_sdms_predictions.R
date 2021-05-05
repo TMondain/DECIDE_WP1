@@ -8,10 +8,10 @@ library(tidyverse)
 #####     CHANGE FOR EACH RUN     #####
 
 # taxa
-taxa = 'moth' # moth, butterfly
+taxa = 'butterfly' # moth, butterfly
 
 ## choose model of interest
-model = 'rf' # one of c('lr', 'gam', 'rf', 'me')
+model = 'me' # one of c('lr', 'gam', 'rf', 'me')
 
 # pseudoabsence name
 pa_name = 'PA_thinned_10000nAbs'
@@ -26,13 +26,13 @@ knots_gam = 4
 #####    arguments for slurm_apply     #####
 
 # queue for lotus
-queue_name = 'short-serial'
+queue_name = 'long-serial'
 
 # time requirement
-time = '23:59:59'
+time = '47:59:59'
 
 # memory requirement in MB
-mem_req = 30000
+mem_req = 40000
 
 
 # load data for parameters
@@ -110,6 +110,7 @@ slurm_sdm_boot <- function(name_index) {
   
   ## Find the species of interest
   species = file_for_lotus$species[name_index]
+  warning(paste('!!!   species   !!!  ', species, '  !!!   species   !!!'))
 
   # run the model
   sdm <- fsdm(species = species, model = model, 
