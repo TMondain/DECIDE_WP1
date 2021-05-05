@@ -7,27 +7,38 @@ library(raster)
 library(rslurm)
 
 #####  Get parameters
-# use the names from the pseudoabsences
 
 # taxa for slurm output and parameter loading
-# - still need to change taxa within function 
 taxa = 'butterfly'
-pseudoabs_type = 'unthinned_10000nAbs' ## same, still need to change within function when changing
+pseudoabs_type = 'PA_thinned_10000nAbs' ## same, still need to change within function when changing
+auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
+models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
+
+# use the species names from the pseudoabsences
 
 if(taxa == 'moth'){
   
   ## for moths
-  load(paste0("scripts/lotus/moth/pseudoabsences/moth_PA_", pseudoabs_type, ".rdata"))
+  load(paste0("scripts/lotus/moth/pseudoabsences/moth_", pseudoabs_type, ".rdata"))
   pars <- data.frame(name_index = seq(1, length(names(ab1))))
+  species <- names(ab1)
   
 } else if(taxa == 'butterfly'){
   
   ## for butterflies
-  load(paste0("scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_PA_", pseudoabs_type, ".rdata"))
+  load(paste0("scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_", pseudoabs_type, ".rdata"))
   pars <- data.frame(name_index = seq(1, length(names(res_out))))
+  species <- names(res_out)
   
 }
 
+
+
+file_for_lotus <- data.frame(species = gsub(pattern = ' ', replacement = '_', x = unique(species)),
+                             taxa = rep(taxa, length = length(unique(species))),
+                             pseudoabs_type = rep(pseudoabs_type, length = length(unique(species))),
+                             auc_cutoff = rep(auc_cutoff, length = length(unique(species))))
+head(file_for_lotus)
 
 
 calculate_ensemble <- function(name_index) {
@@ -35,12 +46,24 @@ calculate_ensemble <- function(name_index) {
   require(tidyverse)
   require(raster)
   
-  ### 1. parameters for function
-  taxa = 'butterfly' # moth butterfly
-  pseudoabs_type = 'unthinned_10000nAbs' # which model run name to go through
-  auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
-  models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
+  # read the file_for_lotus.csv
+  file_for_lotus <- read.csv('file_for_lotus.csv')
   
+  ### 1. parameters for function
+  # species
+  names = file_for_lotus$species[name_index]
+  
+  # taxa
+  taxa = file_for_lotus$taxa[name_index] 
+  
+  # pseudoabsence type
+  pseudoabs_type = file_for_lotus$pa_name[name_index] # which model run name to go through
+  
+  # auc cutoff for dropping models
+  auc_cutoff = file_for_lotus$auc_cutoff[name_index] ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
+  
+  # models to check
+  models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
   ## no need to change these unless changing directories
   main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
@@ -59,24 +82,24 @@ calculate_ensemble <- function(name_index) {
   errored_models <- list()
   
   
-  ### 3. get names and species of interest 
-  if(taxa == 'moth'){
-    
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/moth_PA_", pseudoabs_type, ".rdata")) ## moths
-    names <- gsub(pattern = ' ', 
-                  replacement = '_',
-                  x = names(ab1)) %>% 
-      sort()
-    
-  } else if(taxa == 'butterfly'){
-    
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_PA_", pseudoabs_type, ".rdata")) ## butterflies
-    names <- gsub(pattern = ' ', 
-                  replacement = '_',
-                  x =  names(res_out)) %>% 
-      sort()
-    
-  } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
+  # ### 3. get names and species of interest 
+  # if(taxa == 'moth'){
+  #   
+  #   load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/moth_", pseudoabs_type, ".rdata")) ## moths
+  #   names <- gsub(pattern = ' ', 
+  #                 replacement = '_',
+  #                 x = names(ab1)) %>% 
+  #     sort()
+  #   
+  # } else if(taxa == 'butterfly'){
+  #   
+  #   load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_", pseudoabs_type, ".rdata")) ## butterflies
+  #   names <- gsub(pattern = ' ', 
+  #                 replacement = '_',
+  #                 x =  names(res_out)) %>% 
+  #     sort()
+  #   
+  # } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
   
   
   print(names[name_index])
