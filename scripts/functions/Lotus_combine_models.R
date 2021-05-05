@@ -9,7 +9,7 @@ library(rslurm)
 #####  Get parameters
 
 # taxa for slurm output and parameter loading
-taxa = 'butterfly'
+taxa = 'moth'
 pseudoabs_type = 'PA_thinned_10000nAbs' ## same, still need to change within function when changing
 auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
 models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
@@ -32,15 +32,7 @@ if(taxa == 'moth'){
   
 }
 
-
-
-file_for_lotus <- data.frame(species = gsub(pattern = ' ', replacement = '_', x = unique(species)),
-                             taxa = rep(taxa, length = length(unique(species))),
-                             pseudoabs_type = rep(pseudoabs_type, length = length(unique(species))),
-                             auc_cutoff = rep(auc_cutoff, length = length(unique(species))))
-head(file_for_lotus)
-
-
+###   function
 calculate_ensemble <- function(name_index) {
   
   require(tidyverse)
@@ -321,4 +313,12 @@ sdm_slurm <- slurm_apply(calculate_ensemble,
                          submit = F)
 
 
+## create the file for lotus
+file_for_lotus <- data.frame(species = gsub(pattern = ' ', replacement = '_', x = unique(species)),
+                             taxa = rep(taxa, length = length(unique(species))),
+                             pseudoabs_type = rep(pseudoabs_type, length = length(unique(species))),
+                             auc_cutoff = rep(auc_cutoff, length = length(unique(species))))
+head(file_for_lotus)
 
+write.csv(file_for_lotus, 
+          file = paste0('_rslurm_', taxa, "_", pseudoabs_type, "_weighted_ensemble", "/file_for_lotus.csv"))
