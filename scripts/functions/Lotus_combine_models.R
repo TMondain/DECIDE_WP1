@@ -9,7 +9,7 @@ library(rslurm)
 #####  Get parameters
 
 # taxa for slurm output and parameter loading
-taxa = 'moth'
+taxa = 'butterfly'
 pseudoabs_type = 'PA_thinned_10000nAbs' ## same, still need to change within function when changing
 auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
 models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
