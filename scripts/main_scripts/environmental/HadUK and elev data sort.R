@@ -11,7 +11,7 @@ library(dismo)
 # have files for 2010 to 2016 inclusive of monthly min and max temp and rainfall
 # setwd("C:/Users/thoval/OneDrive - NERC/Documents/Analyses/")
 
-list.files("Data/HadUK_dat/")
+path <- "../../../Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/HadUK_dat/"
 
 vars <- c("rainfall", "tasmax", "tasmin")
 
@@ -20,7 +20,7 @@ out_var <- list()
 for(i in vars) {
   
   # list all the files with a given structure
-  files <- list.files(pattern = i, path = "Data/HadUK_dat/", full.names = T)
+  files <- list.files(pattern = i, path = path, full.names = T)
   
   # initialise list
   st_l <- list()
