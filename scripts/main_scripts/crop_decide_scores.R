@@ -77,16 +77,16 @@ b_weight_gb <- raster::stack('outputs/decide_score_outputs/butterfly_weighted_pr
 
 par(mfrow = c(1,2))
 plot(m_gb, main = 'moths')
-plot(b_gb, main = 'butterflies')
-
 plot(m_weight_gb, main = 'moths weighted')
+
+plot(b_gb, main = 'butterflies')
 plot(b_weight_gb, main = 'butterflies weighted')
 
 
 hist(m_gb, main = 'moths')
-hist(b_gb, main = 'butterflies')
-
 hist(m_weight_gb, main = 'moths weighted')
+
+hist(b_gb, main = 'butterflies')
 hist(b_weight_gb, main = 'butterflies weighted')
 
 par(mfrow = c(1,1))
