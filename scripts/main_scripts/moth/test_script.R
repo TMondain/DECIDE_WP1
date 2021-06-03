@@ -28,6 +28,10 @@ ed <- raster::stack("data/environmental_data/edat_nocorrs_nosea.gri")
 
 names(ed)
 
+t <- ed[[31]]
+
+t_ag <- raster::aggregate(t, fact = 10)
+plot(t_ag)
 
 ## old code 
 # ## big problem with slope and aspect!!!
