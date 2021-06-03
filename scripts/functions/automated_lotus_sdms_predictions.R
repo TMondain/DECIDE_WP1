@@ -147,14 +147,14 @@ slurm_sdm_boot <- function(name_index) {
               filename = paste0(outPath, model, "_SDMs_", species_name, "_meanpred.grd"),
               format = 'raster', overwrite = T)
   
-  # save quantile max min
-  print("#####     Saving quantile max min raster     #####")
-  writeRaster(x = mod_preds$quant_minmax, 
-              filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilemaxmin.grd"),
-              format = 'raster', overwrite = T)
+  # # save quantile max min
+  # print("#####     Saving quantile max min raster     #####")
+  # writeRaster(x = mod_preds$quant_minmax, 
+  #             filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilemaxmin.grd"),
+  #             format = 'raster', overwrite = T)
   
-  # save quantile range raster
-  print("#####     Saving quantile range raster     #####")
+  # save standard deviation raster
+  print("#####     Saving standard deviation raster     #####")
   writeRaster(x = mod_preds$quant_range, 
               filename = paste0(outPath, model, "_SDMs_", species_name, "_quantilerange.grd"),
               format = 'raster', overwrite = T)
