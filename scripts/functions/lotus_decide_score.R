@@ -9,7 +9,7 @@ library(rslurm)
 pseudoabs_name = 'PA_thinned_10000nAbs'
 
 # decide score method
-method = c('var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var') # 'var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var'
+method = c('sqroot_var_preds', 'equal_weighting', 'sqroot_preds_var') # 'var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var'
 
 # combine decide score method
 comb_method = 'weight_mean'
@@ -52,11 +52,11 @@ decide_score <- function(index){
   
   
   ## combine them together to create decide score
-  if(method == 'var_sqroot_preds'){
+  if(method == 'sqroot_var_preds'){
     dec_spp <- preds*sqrt(var)
   } else if(method =='equal_weighting') {
     dec_spp <- preds*var
-  } else if(method == 'preds_sqroot_var'){
+  } else if(method == 'sqroot_preds_var'){
     dec_spp <- sqrt(preds)*var
   } else{ stop(paste('!!!   script only coded for methods:
                      var_sqroot_preds, equal_weighting, preds_sqroot_var  !!!')) }
