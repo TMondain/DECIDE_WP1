@@ -474,10 +474,10 @@ get_predictions <- function(model_outs,
     boots_out <- raster::stack(lapply(model_outs$Bootstrapped_models, FUN = function(x) predict(env_data, x, type=type, index=index)))
     
     ## quantiles
-    print(paste0('#####   getting quantiles   #####'))
+    print(paste0('#####   getting standard deviation   #####'))
     mean_preds <- calc(boots_out, fun = mean, na.rm = T) # the mean
-    quant_preds <- calc(boots_out, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)}) # get the quantile variation
-    rnge <- quant_preds[[2]]-quant_preds[[1]] # get the range of max - min
+    rnge <- calc(boots_out, fun = function(x) {sd(x, na.rm = TRUE)}) # get the quantile variation
+    # rnge <- quant_preds[[2]]-quant_preds[[1]] # get the range of max - min
     
     
   } else if(model == 'lrReg') { 
@@ -526,16 +526,16 @@ get_predictions <- function(model_outs,
       ## quantiles
       print(paste0('#####   getting quantiles lrReg   #####'))
       mean_preds <- mean(boots) # where all models are intercept-only, takes the mean to avoid errors later but AUC scores are NA which means they are dropped for final ensembles
-      quant_preds <- calc(boots, fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-      rnge <- quant_preds[[2]]-quant_preds[[1]]
+      rnge <- calc(boots, fun = function(x) {sd(x, na.rm = TRUE)})
+      # rnge <- quant_preds[[2]]-quant_preds[[1]]
       
       
     } else {
       
       print(paste0('#####   getting quantiles lrReg   #####'))
       mean_preds <- mean(boots[[-drop]])
-      quant_preds <- calc(boots[[-drop]], fun = function(x) {quantile(x, probs = c(0.05, 0.95), na.rm = TRUE)})
-      rnge <- quant_preds[[2]]-quant_preds[[1]]
+      rnge <- calc(boots[[-drop]], fun = function(x) {sd(x, na.rm = TRUE)})
+      # rnge <- quant_preds[[2]]-quant_preds[[1]]
       
     }
     
@@ -545,7 +545,7 @@ get_predictions <- function(model_outs,
   }
   
   return(list(mean_predictions = mean_preds,
-              quant_minmax = quant_preds, 
+              # quant_minmax = quant_preds, 
               quant_range = rnge))
   
 }
