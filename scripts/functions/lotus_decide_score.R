@@ -5,20 +5,20 @@ library(rslurm)
 
 # going to run it as a slurm_apply call to run butterflies and moths
 
-# parameter files
-pars = data.frame(index = 1:2)
-
 # pseudoabsence name (i.e. the model)
 pseudoabs_name = 'PA_thinned_10000nAbs'
 
 # decide score method
-method = 'var_sqroute_preds'
+method = c('var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var') # 'var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var'
 
 # combine decide score method
 comb_method = 'weight_mean'
 
 # main directory
 main_dir = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/'
+
+# parameter file
+pars = data.frame(index = 1:(length(method) * length(comb_method) *2)) # 2 is for number of taxa
 
 decide_score <- function(index){
   
@@ -52,9 +52,14 @@ decide_score <- function(index){
   
   
   ## combine them together to create decide score
-  if(method == 'var_sqroute_preds'){
+  if(method == 'var_sqroot_preds'){
     dec_spp <- preds*sqrt(var)
-  } else { stop(paste('!!!   script only coded for methods var_sqroute_preds   !!!')) }
+  } else if(method =='equal_weighting') {
+    dec_spp <- preds*var
+  } else if(method == 'preds_sqroot_var'){
+    dec_spp <- sqrt(preds)*var
+  } else{ stop(paste('!!!   script only coded for methods:
+                     var_sqroot_preds, equal_weighting, preds_sqroot_var  !!!')) }
   
   # get mean across all species
   if(comb_method == 'mean'){
@@ -77,23 +82,31 @@ setwd(paste0('scripts/lotus/decide_scores/'))
 
 sdm_slurm <- slurm_apply(decide_score,
                          params = pars,
-                         jobname = paste0("decide_scores_", pseudoabs_name, "_", method, "_", comb_method),
+                         jobname = paste0("decide_scores_", pseudoabs_name, "_", paste(method, collapse = '_'), "_", comb_method),
                          nodes = length(unique(pars$index)),
                          cpus_per_node = 1,
                          slurm_options = list(partition = "short-serial",
                                               time = "23:59:59",
-                                              mem = "30000"),
-                                              # error = paste0(main_dir,'decide_scores/', '_rslurm_decide_scores_', pseudoabs_name, '_', method, '/', method,'_error-%j-%a.out')),
+                                              mem = "30000",
+                                              output = paste0(paste(method, collapse = '_'),'_out-%j-%a.out'),
+                                              error = paste0(paste(method, collapse = '_'),'_error-%j-%a.err')),
                          rscript_path = '',
                          submit = F)
 
 
+# # create file for lotus
+# file_for_lotus <- data.frame(taxa = c('moth', 'butterfly'),
+#                              pseudoabs_name = rep(pseudoabs_name, 2),
+#                              method = rep(method, 2), 
+#                              main_dir = rep(main_dir, 2),
+#                              comb_method = rep(comb_method, 2))
+
 # create file for lotus
-file_for_lotus <- data.frame(taxa = c('moth', 'butterfly'),
-                             pseudoabs_name = rep(pseudoabs_name, 2),
-                             method = rep(method, 2), 
-                             main_dir = rep(main_dir, 2),
-                             comb_method = rep(comb_method, 2))
+file_for_lotus <- expand.grid(taxa = c('moth', 'butterfly'),
+                             pseudoabs_name = pseudoabs_name,
+                             method = method, 
+                             main_dir = main_dir,
+                             comb_method = comb_method)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_decide_scores_', pseudoabs_name, '_', method,'_', comb_method, '/file_for_lotus.csv'))
+          file = paste0('_rslurm_decide_scores_', pseudoabs_name, '_', paste(method, collapse = '_'),'_', comb_method, '/file_for_lotus.csv'))
