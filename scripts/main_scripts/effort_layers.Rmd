@@ -1,0 +1,153 @@
+---
+title: "Making effort layers"
+output: html_notebook
+---
+
+
+```{r}
+
+library(raster)
+library(tidyverse)
+
+Write = TRUE
+
+```
+
+
+For the simulation work, we need to make an effort layer of recording activities for moths and butterflies. This is going to be the number of unique days with a sighting of any species per grid cell.
+
+## moths
+
+```{r, load_data}
+
+# moth
+mdf <- read_csv('../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv')
+
+# butterflies
+bdf <- read_csv('../../data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv')
+
+# 100m raster
+env <- raster::stack('../../data/environmental_data/edat_nocorrs_nosea_cropped.grd')
+env <- subset(env, "elevation_UK")
+
+plot(env)
+points(x = mdf$lon, y = mdf$lat, pch = 20, cex = 0.1)
+
+
+```
+
+## aggregate to desired resolution
+
+```{r, agg_resolution}
+
+km1 <- raster::aggregate(env, 10)
+km10 <- raster::aggregate(env, 100)
+
+```
+
+
+
+## effort function
+
+```{r, effort_function}
+
+get_effort <- function(coords_df, # two column matrix of (lon, lat)
+                       rast, # raster for initial filling
+                       fact, # factor to increase spatial resolution of raster - relative to initial resolution
+                       name = NULL) # name to give layer
+{  
+  
+  
+  if(fact < 1) stop('aggregation factor must be >0')
+  if(fact >1) { print('###   aggregating   ###'); rast <- raster::aggregate(rast, fact = fact) }
+  
+  # convert raster to 0s
+  r <- rast
+  r[] <- 0
+  
+  # get counts per cell
+  counts <- table(cellFromXY(r, coords_df))
+  
+  # fill matrix
+  r[as.numeric(names(counts))] = counts
+  
+  print('###   masking   ###')
+  agg_mask <- raster::mask(r, rast)
+  names(agg_mask) <- name
+  
+  return(agg_mask)
+}
+
+
+
+```
+
+## moths 1 + 10km
+
+```{r, moths_1+10km}
+
+mths_1km <- get_effort(coords_df = cbind(mdf$lon, mdf$lat),
+                       rast = km1,
+                       fact = 1, 
+                       name = 'moths_1km_effort')
+
+mths_10km <- get_effort(coords_df = cbind(mdf$lon, mdf$lat),
+                        rast = km10,
+                        fact = 1, 
+                        name = 'moths_10km_effort')
+
+
+plot(mths_1km, main = 'moths, 1km effort')
+plot(mths_10km, main = 'moths, 10km effort')
+
+if(Write){
+  
+  writeRaster(mths_1km, filename = '../../data/edited_insect_data/moth/effort_layers/moth_1km_effort_layer.grd',
+              format = 'raster', overwrite = T)
+  
+  
+  writeRaster(mths_10km, filename = '../../data/edited_insect_data/moth/effort_layers/moth_10km_effort_layer.grd',
+              format = 'raster', overwrite = T)
+  
+  
+}
+
+
+```
+
+## butterflies 1 + 10km
+
+```{r, butterfly_1_10km}
+
+butt_1km <- get_effort(coords_df = cbind(bdf$lon, bdf$lat),
+                       rast = km1,
+                       fact = 1, 
+                       name = 'butterfly_1km_effort')
+
+butt_10km <- get_effort(coords_df = cbind(bdf$lon, bdf$lat),
+                        rast = km10,
+                        fact = 1, 
+                        name = 'butterfly_10km_effort')
+
+
+plot(butt_1km, main = 'butterfly, 1km effort')
+plot(butt_10km, main = 'butterfly, 10km effort')
+
+
+if(Write){
+  
+  writeRaster(butt_1km, filename = '../../data/edited_insect_data/butterfly/effort_layers/butterfly_1km_effort_layer.grd',
+              format = 'raster', overwrite = T)
+  
+  
+  writeRaster(butt_10km, filename = '../../data/edited_insect_data/butterfly/effort_layers/butterfly_10km_effort_layer.grd',
+              format = 'raster', overwrite = T)
+  
+  
+}
+
+
+length(unique(bdf$yr)) * 366 * length(unique(bdf$sp_n))
+
+```
+

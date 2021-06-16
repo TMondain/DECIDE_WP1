@@ -18,6 +18,10 @@ Write = TRUE
 
 ```
 
+
+This script is to create the datasets for use later on. Wanted to keep the scripts for all taxa in one place for ease of access. This script creates datasets with the raw data at 100m resolution and removes duplicates of same species, in the same place on the same date. In the final pseudoabsence generation we remove any duplicates in the same grid cell; this is done on Lotus during the pseudoabsence scripts.
+
+
 ## Moths
 
 
@@ -175,6 +179,7 @@ if(Write){
 
 ```{r, restart}
 
+# remove everything except 'write'
 rm(list=setdiff(ls(), "Write"))
 
 
