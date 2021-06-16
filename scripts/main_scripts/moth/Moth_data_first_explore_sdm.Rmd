@@ -21,13 +21,14 @@ library(BRCmap)
 library(lubridate)
 
 
+
 ```
 
 
 ```{r data}
 
 # get the files from the NRMS and bind them together
-f <- list.files("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/")
+f <- list.files("../../../data/raw_data/moth/", full.names = T)
 f
 
 out_dat <- list()
@@ -35,7 +36,7 @@ out_dat <- list()
 for(i in grep(pattern = "NMRS", x = f, value = T)){
   print(i)
   
-  out_dat[[i]] <- read_csv(file = paste("Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/", i, sep = ""))
+  out_dat[[i]] <- read_csv(file = i)
   
 }
 
@@ -50,7 +51,10 @@ head(main_df)
 
 
 # get the species name
-l_n <- read_csv(file = "Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/lepidoptera_names.csv")
+l_n <- read_csv(file = grep(pattern = "lepidoptera_names", x = f, value = T))
+l_n
+
+# "Data/BNM_NRMS/BNM_NRMS_data_2000_onwards/lepidoptera_names.csv")
 
 
 ```
@@ -108,10 +112,82 @@ df <- subset(cbind(main_df, ll), DT_ID == 1  &
 
 dim(df[duplicated(df$id),])
 
-df_nodups <-  df[!duplicated(df$id),]
-head(df_nodups)
+# df_nodups <-  df[!duplicated(df$id),]
+# head(df_nodups)
 
-# write.csv(df_nodups, file = "Data/moth_no_duplicates.csv")
+df_nodups <- df %>% 
+  distinct()
+
+write.csv(df_nodups, file = "../../../data/edited_insect_data/moth/moth_no_duplicates.csv")
+
+```
+
+
+## get day flying moths
+
+```{r day_fliers}
+
+# day fliers as based on the rmarkdown document and 
+# the expert decision makers
+dfm <- c("Jordanita globulariae",
+         "Adscita statices",
+         "Adscita geryon",
+         "Zygaena purpuralis",
+         "Zygaena loti",
+         "Zygaena exulans",
+         "Zygaena viciae",
+         "Zygaena filipendulae",
+         "Zygaena lonicerae",
+         "Zygaena lonicerae/trifolii",
+         "Zygaena trifolii",
+         # "Lasiocampa quercus",
+         "Hemaris tityus",
+         "Hemaris fuciformis",
+         "Idaea muricata",
+         "Scotopteryx bipunctaria",
+         "Epirrhoe tristata",
+         "Minoa murinata",
+         "Rheumaptera hastata",
+         "Odezia atrata",
+         "Perizoma albulata",
+         "Eupithecia pygmaeta",
+         "Archiearis parthenias",
+         "Archiearis notha",
+         "Macaria carbonaria",
+         "Macaria brunneata",
+         "Chiasmia clathrata",
+         "Pseudopanthera macularia",
+         "Lycia lapponaria",
+         "Lycia zonaria",
+         "Ematurga atomaria",
+         "Glacies coracina",
+         "Siona lineata",
+         "Perconia strigillaria",
+         "Orgyia antiqua",
+         "Orgyia recens",
+         "Parasemia plantaginis",
+         "Tyria jacobaeae",
+         "Phytometra viridaria",
+         "Euclidia glyphica",
+         "Euclidia mi",
+         "Tyta luctuosa",
+         "Panemeria tenebrata",
+         "Heliothis viriplaca",
+         "Heliothis maritima",
+         # "Eremobia ochroleuca",
+         "Photedes captiuncula",
+         # "Cerapteryx graminis",
+         "Anarta melanopa",
+         "Anarta myrtilli",
+         "Anarta cordigera")
+
+dfm <- dfm[!duplicated(dfm)]
+
+dfm_df <- df_nodups[df_nodups$sp_n %in% dfm,]
+
+dfm_df_east_north <- gr_let2num(dfm_df)
+
+write_csv(df_nodups, file = "../../../data/edited_insect_data/moth/DayFlyingMoths_East_Norths.csv")
 
 ```
 
