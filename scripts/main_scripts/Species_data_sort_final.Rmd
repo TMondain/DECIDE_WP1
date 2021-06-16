@@ -1,0 +1,179 @@
+---
+title: "Sorting out species data"
+output: html_notebook
+---
+
+
+```{r}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(BRCmap)
+library(lubridate)
+
+# do we want to write the CSVs out?
+write = TRUE
+
+
+```
+
+## Moths
+
+
+```{r load_files, message=F, warning=F}
+
+# get the files from the NRMS and bind them together
+f <- list.files("../../data/raw_data/moth/", full.names = T)
+f
+
+out_dat <- list()
+
+for(i in grep(pattern = "NMRS", x = f, value = T)){
+  print(i)
+  
+  out_dat[[i]] <- read_csv(file = i)
+  
+}
+
+main_df <- do.call("rbind", out_dat)
+
+head(main_df)
+
+
+# get the species name
+l_n <- read_csv(file = grep(pattern = "lepidoptera_names", x = f, value = T))
+
+
+```
+
+
+choose 100m resolution, match latin names.
+
+```{r, data_faff}
+
+# only get precision 100 and recorded on the same date
+df <- subset(main_df, DT_ID == 1  & # start and end on same day
+                 TO_PRECISION == 100) %>% 
+  mutate(date = dmy(TO_STARTDATE),
+         yr = year(date),
+         jd = yday(date),
+         sp_n = l_n$NAME[match(CONCEPT, l_n$CONCEPT)],
+         com_n = l_n$NAME_ENGLISH[match(CONCEPT, l_n$CONCEPT)],
+         ig = l_n$INFORMAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)])#,
+         # id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date
+
+
+```
+
+
+
+```{r, day_fliers}
+
+# day fliers as based on the rmarkdown document and 
+# the expert decision makers
+dfm <- c("Jordanita globulariae",
+         "Adscita statices",
+         "Adscita geryon",
+         "Zygaena purpuralis",
+         "Zygaena loti",
+         "Zygaena exulans",
+         "Zygaena viciae",
+         "Zygaena filipendulae",
+         "Zygaena lonicerae",
+         "Zygaena lonicerae/trifolii",
+         "Zygaena trifolii",
+         # "Lasiocampa quercus",
+         "Hemaris tityus",
+         "Hemaris fuciformis",
+         "Idaea muricata",
+         "Scotopteryx bipunctaria",
+         "Epirrhoe tristata",
+         "Minoa murinata",
+         "Rheumaptera hastata",
+         "Odezia atrata",
+         "Perizoma albulata",
+         "Eupithecia pygmaeta",
+         "Archiearis parthenias",
+         "Archiearis notha",
+         "Macaria carbonaria",
+         "Macaria brunneata",
+         "Chiasmia clathrata",
+         "Pseudopanthera macularia",
+         "Lycia lapponaria",
+         "Lycia zonaria",
+         "Ematurga atomaria",
+         "Glacies coracina",
+         "Siona lineata",
+         "Perconia strigillaria",
+         "Orgyia antiqua",
+         "Orgyia recens",
+         "Parasemia plantaginis",
+         "Tyria jacobaeae",
+         "Phytometra viridaria",
+         "Euclidia glyphica",
+         "Euclidia mi",
+         "Tyta luctuosa",
+         "Panemeria tenebrata",
+         "Heliothis viriplaca",
+         "Heliothis maritima",
+         # "Eremobia ochroleuca",
+         "Photedes captiuncula",
+         # "Cerapteryx graminis",
+         "Anarta melanopa",
+         "Anarta myrtilli",
+         "Anarta cordigera")
+
+dfm_df <- df[df$sp_n %in% dfm,]
+
+```
+
+Get eastings northings and bind with data frame (rename lon lat for simplicity)
+
+```{r, east_norths}
+
+# lat lon from grid refs
+ll <- gr_let2num(dfm_df$TO_GRIDREF)
+head(ll)
+
+dfm_df <- dfm_df %>% 
+  mutate(lon = ll$EASTING,
+         lat = ll$NORTHING)
+
+head(dfm_df)
+
+if(write){
+  
+  write.csv(dfm_df, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_with_duplicates.csv')
+  
+}
+
+
+
+```
+
+
+Remove duplicates of same species, on same day in same location
+
+
+```{r, remove_dups}
+
+dfm_df_no_dups <- dfm_df %>% 
+  distinct(sp_n, date, lon, lat) # use these columns to determine whether or not distinct
+
+if(write){
+  
+  write.csv(dfm_df, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv')
+  
+}
+
+
+```
+
+
+## Butterflies
+
+
+
+
