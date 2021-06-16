@@ -13,7 +13,7 @@ library(BRCmap)
 library(lubridate)
 
 # do we want to write the CSVs out?
-write = TRUE
+Write = TRUE
 
 
 ```
@@ -61,8 +61,7 @@ df <- subset(main_df, DT_ID == 1  & # start and end on same day
          sp_n = l_n$NAME[match(CONCEPT, l_n$CONCEPT)],
          com_n = l_n$NAME_ENGLISH[match(CONCEPT, l_n$CONCEPT)],
          ig = l_n$INFORMAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
-         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)])#,
-         # id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date
+         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)])
 
 
 ```
@@ -139,11 +138,12 @@ head(ll)
 
 dfm_df <- dfm_df %>% 
   mutate(lon = ll$EASTING,
-         lat = ll$NORTHING)
+         lat = ll$NORTHING,
+         id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date)
 
 head(dfm_df)
 
-if(write){
+if(Write){
   
   write.csv(dfm_df, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_with_duplicates.csv')
   
@@ -160,19 +160,100 @@ Remove duplicates of same species, on same day in same location
 ```{r, remove_dups}
 
 dfm_df_no_dups <- dfm_df %>% 
-  distinct(sp_n, date, lon, lat) # use these columns to determine whether or not distinct
+  distinct(sp_n, date, lon, lat, .keep_all = T) # use these columns to determine whether or not distinct
 
-if(write){
+if(Write){
   
-  write.csv(dfm_df, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv')
+  write.csv(dfm_df_no_dups, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv')
+  
+}
+
+```
+
+
+## Butterflies
+
+```{r, restart}
+
+rm(list=setdiff(ls(), "Write"))
+
+
+```
+
+
+```{r, butt_files, message=FALSE}
+
+
+# get list of files
+f <- list.files(path = '../../data/raw_data/butterfly/', full.names = TRUE)
+f
+
+# read subset of NBN data to test 2000 - 2010
+b00 <- read_csv(f[1])
+b10 <- read_csv(f[2])
+
+b00 <- rbind(b00, b10)
+
+# get species codes
+l_n <- read_csv(f[3])
+
+
+```
+
+
+choose 100m resolution, match latin names, east norths
+
+```{r, data_faffing}
+
+
+b002 <- subset(b00, DT_ID == 1  & 
+                 TO_PRECISION == 100) %>% 
+  mutate(date = dmy(TO_STARTDATE),
+         yr = year(date),
+         jd = yday(date),
+         sp_n = l_n$NAME[match(CONCEPT, l_n$CONCEPT)],
+         com_n = l_n$NAME_ENGLISH[match(CONCEPT, l_n$CONCEPT)],
+         ig = l_n$INFORMAL_GROUP[match(CONCEPT, l_n$CONCEPT)],
+         ag = l_n$ADDITIONAL_GROUP[match(CONCEPT, l_n$CONCEPT)])
+
+
+# east norths from grid refs
+ll <- gr_let2num(b002$TO_GRIDREF)
+
+# add eastings northings as lon lat
+b_df <- b002 %>% 
+  mutate(lon = ll$EASTING,
+         lat = ll$NORTHING, 
+         id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date
+
+head(b_df)
+
+if(Write){
+  
+  write.csv(b_df, file = '../../data/edited_insect_data/butterfly/butterfly_EastNorths_with_duplicates.csv')
+  
+}
+
+
+
+```
+
+
+```{r, butterfly_remove_duplicates}
+
+
+b_df_no_dups <- b_df %>% 
+  distinct(sp_n, date, lon, lat, .keep_all = T) # use these columns to determine whether or not distinct
+
+if(Write){
+  
+  write.csv(b_df_no_dups, file = '../../data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv')
   
 }
 
 
 ```
 
-
-## Butterflies
 
 
 
