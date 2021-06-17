@@ -30,18 +30,39 @@ bdf <- read_csv('../../data/edited_insect_data/butterfly/butterfly_EastNorths_no
 env <- raster::stack('../../data/environmental_data/edat_nocorrs_nosea_cropped.grd')
 env <- subset(env, "elevation_UK")
 
-plot(env)
+par(mfrow = c(1,2))
+plot(env, main = 'moths')
 points(x = mdf$lon, y = mdf$lat, pch = 20, cex = 0.1)
+
+
+plot(env, main = 'butterflies')
+points(x = bdf$lon, y = bdf$lat, pch = 20, cex = 0.1)
+
+par(mfrow = c(1,1))
 
 
 ```
 
-## aggregate to desired resolution
+## aggregate raster to desired resolution
 
 ```{r, agg_resolution}
 
 km1 <- raster::aggregate(env, 10)
 km10 <- raster::aggregate(env, 100)
+
+```
+
+## Changing grouping level
+
+```{r}
+
+mdf_no_spp <- mdf  %>% 
+  distinct(lon, lat, date)
+
+
+bdf_no_spp <- bdf  %>% 
+  distinct(lon, lat, date)
+
 
 ```
 
@@ -58,8 +79,8 @@ get_effort <- function(coords_df, # two column matrix of (lon, lat)
 {  
   
   
-  if(fact < 1) stop('aggregation factor must be >0')
-  if(fact >1) { print('###   aggregating   ###'); rast <- raster::aggregate(rast, fact = fact) }
+  if(fact < 1) stop('aggregation factor must be > 0')
+  if(fact > 1) { print('###   aggregating   ###'); rast <- raster::aggregate(rast, fact = fact) }
   
   # convert raster to 0s
   r <- rast
@@ -86,19 +107,21 @@ get_effort <- function(coords_df, # two column matrix of (lon, lat)
 
 ```{r, moths_1+10km}
 
-mths_1km <- get_effort(coords_df = cbind(mdf$lon, mdf$lat),
+mths_1km <- get_effort(coords_df = cbind(mdf_no_spp$lon, mdf_no_spp$lat),
                        rast = km1,
                        fact = 1, 
                        name = 'moths_1km_effort')
 
-mths_10km <- get_effort(coords_df = cbind(mdf$lon, mdf$lat),
+mths_10km <- get_effort(coords_df = cbind(mdf_no_spp$lon, mdf_no_spp$lat),
                         rast = km10,
                         fact = 1, 
                         name = 'moths_10km_effort')
 
+par(mfrow = c(1, 2))
+plot(log(mths_1km), main = 'moths, 1km effort')
+plot(log(mths_10km), main = 'moths, 10km effort')
+par(mfrow = c(1, 1))
 
-plot(mths_1km, main = 'moths, 1km effort')
-plot(mths_10km, main = 'moths, 10km effort')
 
 if(Write){
   
@@ -119,20 +142,20 @@ if(Write){
 
 ```{r, butterfly_1_10km}
 
-butt_1km <- get_effort(coords_df = cbind(bdf$lon, bdf$lat),
+butt_1km <- get_effort(coords_df = cbind(bdf_no_spp$lon, bdf_no_spp$lat),
                        rast = km1,
                        fact = 1, 
                        name = 'butterfly_1km_effort')
 
-butt_10km <- get_effort(coords_df = cbind(bdf$lon, bdf$lat),
+butt_10km <- get_effort(coords_df = cbind(bdf_no_spp$lon, bdf_no_spp$lat),
                         rast = km10,
                         fact = 1, 
                         name = 'butterfly_10km_effort')
 
-
-plot(butt_1km, main = 'butterfly, 1km effort')
-plot(butt_10km, main = 'butterfly, 10km effort')
-
+par(mfrow = c(1,2))
+plot(log(butt_1km), main = 'butterfly, 1km effort')
+plot((butt_10km), main = 'butterfly, 10km effort')
+par(mfrow = c(1,1))
 
 if(Write){
   
@@ -147,7 +170,125 @@ if(Write){
 }
 
 
-length(unique(bdf$yr)) * 366 * length(unique(bdf$sp_n))
+length(unique(bdf$yr)) * 366 * 10000 # times the number of cells within the block of interest. I.e. in a 10km grid cell there are 100 * 100m grids = 10 000
 
 ```
+
+
+## Rank-abundance curves
+
+To do this for each dataset, we first need to thin the data to only have one value per grid cell (i.e. removing duplicates of the same species in the same grid cell through time).
+
+```{r, get_abundance_function}
+
+# moths
+mdf_thin <- mdf %>% 
+  mutate(thinned_id = paste(sp_n, TO_GRIDREF, lon, lat)) %>% 
+  distinct(thinned_id, .keep_all = TRUE)
+
+sp_nam <- unique(mdf_thin$sp_n)
+
+# for(s in 1:length(sp_nam)){
+#   
+#   sp_dat <- mdf_thin[mdf_thin$sp_n == sp_nam[s],]
+#   
+#   suppressMessages(
+#     p_rast <- get_effort(coords_df = cbind(sp_dat$lon, sp_dat$lat),
+#                          rast = km1, # 1km raster 
+#                          fact = 1, 
+#                          name = NULL) )
+#   
+#   r_v <- raster::as.data.frame(sp_rast) %>% 
+#     mutate(n = ifelse(layer>0, 1,0),
+#            tot_cells = length(layer)) %>% 
+#     na.omit()
+#   
+#   sp_1km <- data.frame(species = sp_nam[s],
+#                        counts = sum(r_v$n, na.omit = T),
+#                        tot_cells = unique(r_v$tot_cells))
+#   
+#   
+# }
+
+get_abundance <- function(sp_data, res_rast, sp_vec){
+  
+  out <- lapply(1:length(sp_vec), FUN = function(s){
+    
+    sp_dat <- sp_data[sp_data$sp_n == sp_nam[s],]
+    
+    sp_rast <- get_effort(coords_df = cbind(sp_dat$lon, sp_dat$lat),
+                          rast = res_rast, # 1km raster 
+                          fact = 1, 
+                          name = NULL) 
+    
+    r_v <- raster::as.data.frame(sp_rast) %>% 
+      mutate(n = ifelse(layer>0, 1,0),
+             tot_cells = length(layer)) %>% 
+      na.omit()
+    
+    sp_1km <- data.frame(species = sp_nam[s],
+                         counts = sum(r_v$n, na.omit = T),
+                         tot_cells = unique(r_v$tot_cells))
+    
+    
+  })
+  
+  return(do.call(rbind, out))
+  
+}
+
+
+
+
+# butterflies
+bdf_thin <- bdf %>% 
+  mutate(thinned_id = paste(sp_n, TO_GRIDREF, lon, lat)) %>% 
+  distinct(thinned_id, .keep_all = TRUE)
+
+
+```
+
+The plots
+
+```{r, rank_abund_plots}
+
+mdf_thin %>% 
+  group_by(sp_n) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  mutate(prop = n/sum(n)) %>% 
+  ggplot(aes(x = reorder(sp_n, -prop), y = (prop))) +
+  geom_point() +
+  # geom_path() +
+  # coord_flip() +
+  labs(x = 'species', y = 'proportional abundance (n/sum(n))',
+       title = 'moth rank abundance') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+bdf_thin %>% 
+  group_by(sp_n) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  mutate(prop = n/sum(n)) %>% 
+  ggplot(aes(x = reorder(sp_n, -prop), y = (prop))) +
+  geom_point() +
+  # geom_path() +
+  # coord_flip() +
+  labs(x = 'species', y = 'proportional abundance (n/sum(n))',
+       title = 'butterfly rank abundance') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+```
+
+
+
+
+
+
+
+
+
 
