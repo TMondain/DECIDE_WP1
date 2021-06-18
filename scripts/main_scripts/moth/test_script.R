@@ -28,10 +28,10 @@ ed <- raster::stack("data/environmental_data/edat_nocorrs_nosea.gri")
 
 names(ed)
 
-t <- ed[[31]]
-
-t_ag <- raster::aggregate(t, fact = 10)
-plot(t_ag)
+# t <- ed[[31]]
+# 
+# t_ag <- raster::aggregate(t, fact = 10)
+# plot(t_ag)
 
 ## old code 
 # ## big problem with slope and aspect!!!
@@ -98,7 +98,7 @@ ht <- hbv_y
 names(ht)
 
 #####    Load in day flying moth data     #####
-dfm_df <- read_csv("data/edited_insect_data/moth/DayFlyingMoths.csv")
+dfm_df <- read_csv("data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv")
 head(dfm_df)
 
 # get eastings and northings
@@ -112,21 +112,24 @@ dfm_df %>% group_by(sp_n) %>% tally %>%
   theme(axis.text.x = element_text(angle = 50, hjust=1)) +
   xlab("species") + ggtitle("All UK")
 
-# subset to AOI
-sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
-                 lon > -0.8 & lon < 0.2) %>%
-  mutate(species = sp_n,
-         year = yr)
+sp_y <- dfm_df %>% mutate(species = sp_n,
+                          year = yr)
 
-# sp_y <- dfm_df %>% mutate(species = sp_n,
-#                           year = yr)
+# # subset to AOI
+# # can no longer do this cos don't have lon and lat
+# sp_y <- subset(dfm_df, lat > 53.1 & lat <= 54.4 &
+#                  lon > -0.8 & lon < 0.2) %>%
+#   mutate(species = sp_n,
+#          year = yr)
+# 
 
-# New tally
-sp_y %>% group_by(sp_n) %>% tally %>% 
-  ggplot(aes(x = reorder(sp_n, n), y = n)) +
-  geom_point() +
-  theme(axis.text.x = element_text(angle = 50, hjust=1)) +
-  xlab("species") + ggtitle("Subset UK")
+# 
+# # New tally
+# sp_y %>% group_by(sp_n) %>% tally %>% 
+#   ggplot(aes(x = reorder(sp_n, n), y = n)) +
+#   geom_point() +
+#   theme(axis.text.x = element_text(angle = 50, hjust=1)) +
+#   xlab("species") + ggtitle("Subset UK")
 
 # View(sp_y %>% group_by(sp_n) %>% tally %>%
 #        arrange(n))
@@ -144,7 +147,8 @@ ndf <- sp_y %>% mutate(lon = EASTING,
 ndf <- ndf %>% 
   mutate(thinned_id = paste(species, TO_GRIDREF, lon, lat))
 
-ndf_thinned <- ndf[!duplicated(ndf$thinned_id),]
+ndf_thinned <- ndf %>% 
+  distinct(thinned_id, .keep_all = T)
 
 
 registerDoParallel(cores = detectCores() - 1)
@@ -152,8 +156,8 @@ registerDoParallel(cores = detectCores() - 1)
 system.time( 
   ab1 <- foreach(i = 1 : length(spp),
                  .packages = c('raster')) %dopar% {
-
-                                      
+                   
+                   
                    cpa(spdat = ndf, species = spp[i], matchPres = FALSE,
                        nAbs = 10000,
                        minYear = 2000, maxYear = 2017, recThresh = 5,
@@ -172,7 +176,7 @@ names(ab1) <- spp
 spp_lr_out <- list()
 
 system.time(
-  for(s in 2){
+  for(s in 2:4){
     print(paste(s, spp[s], sep = " "))
     
     if(is.null(ab1[[s]])){
@@ -180,7 +184,7 @@ system.time(
       next
     }
     
-    sdm_lr <- fsdm(species = spp[s], model = "me",
+    sdm_lr <- fsdm(species = spp[s], model = "gam",
                    climDat = ht, spData = ab1, knots_gam = 4,
                    k = 2, 
                    write =  F, outPath = "C:/Users/thoval/Documents/Analyses/lr_outs/")

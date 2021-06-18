@@ -51,8 +51,27 @@ km1 <- raster::aggregate(env, 10)
 km10 <- raster::aggregate(env, 100)
 
 ```
+```{r, num_cells}
+
+
+cbind(# 1km GB raster number of cells
+  raster::as.data.frame(km1) %>% 
+    na.omit() %>% 
+    summarise(number_cells_1km_GB = length(layer)),
+  
+  # 10km GB raster number of cells
+  raster::as.data.frame(km10) %>% 
+    na.omit() %>% 
+    summarise(number_cells_10km_GB = length(layer)))
+
+
+
+```
+
 
 ## Changing grouping level
+
+Get the number of visits to a grid cell, but only allow visits on different days. 
 
 ```{r}
 
@@ -70,6 +89,8 @@ bdf_no_spp <- bdf  %>%
 
 ## effort function
 
+Creating an effort function that takes a coordinates matrix, a raster and an aggregation factor (and an optional naming of the output layer). It converts the raster to 0s, counts the number of points that fall in each cell and stores them in the raster. It then applies a mask to the raster to force NAs into the areas falling outside the mask. If the 'fact' argument = 1 then no change is made to the cell size of the raster itself. If it is > 1 then it aggregates by that factor. 
+
 ```{r, effort_function}
 
 get_effort <- function(coords_df, # two column matrix of (lon, lat)
@@ -80,7 +101,7 @@ get_effort <- function(coords_df, # two column matrix of (lon, lat)
   
   
   if(fact < 1) stop('aggregation factor must be > 0')
-  if(fact > 1) { print('###   aggregating   ###'); rast <- raster::aggregate(rast, fact = fact) }
+  if(fact > 1) { message('###   aggregating   ###'); rast <- raster::aggregate(rast, fact = fact) }
   
   # convert raster to 0s
   r <- rast
@@ -92,7 +113,7 @@ get_effort <- function(coords_df, # two column matrix of (lon, lat)
   # fill matrix
   r[as.numeric(names(counts))] = counts
   
-  print('###   masking   ###')
+  message('###   masking   ###')
   agg_mask <- raster::mask(r, rast)
   names(agg_mask) <- name
   
@@ -118,8 +139,8 @@ mths_10km <- get_effort(coords_df = cbind(mdf_no_spp$lon, mdf_no_spp$lat),
                         name = 'moths_10km_effort')
 
 par(mfrow = c(1, 2))
-plot(log(mths_1km), main = 'moths, 1km effort')
-plot(log(mths_10km), main = 'moths, 10km effort')
+plot((mths_1km), main = 'moths, 1km effort')
+plot((mths_10km), main = 'moths, 10km effort')
 par(mfrow = c(1, 1))
 
 
@@ -153,7 +174,7 @@ butt_10km <- get_effort(coords_df = cbind(bdf_no_spp$lon, bdf_no_spp$lat),
                         name = 'butterfly_10km_effort')
 
 par(mfrow = c(1,2))
-plot(log(butt_1km), main = 'butterfly, 1km effort')
+plot((butt_1km), main = 'butterfly, 1km effort')
 plot((butt_10km), main = 'butterfly, 10km effort')
 par(mfrow = c(1,1))
 
@@ -177,40 +198,20 @@ length(unique(bdf$yr)) * 366 * 10000 # times the number of cells within the bloc
 
 ## Rank-abundance curves
 
-To do this for each dataset, we first need to thin the data to only have one value per grid cell (i.e. removing duplicates of the same species in the same grid cell through time).
+To do this for each dataset, we first need to thin the data to only have one value per grid cell (i.e. removing duplicates of the same species in the same grid cell through time).The function counts the number of data points that fall within a given cell using the get_effort() function above which returns a raster of counts. This raster is converted to a data frame of 1s and 0s where counts > 0. Returns a data frame with species, the sum of all cells where counts>0 (i.e. number of cells with anything in) and the total number of cells as a checking mechanism.
 
-```{r, get_abundance_function}
+```{r, get_prevalence_function, message=FALSE}
 
-# moths
-mdf_thin <- mdf %>% 
-  mutate(thinned_id = paste(sp_n, TO_GRIDREF, lon, lat)) %>% 
-  distinct(thinned_id, .keep_all = TRUE)
-
-sp_nam <- unique(mdf_thin$sp_n)
-
-# for(s in 1:length(sp_nam)){
-#   
-#   sp_dat <- mdf_thin[mdf_thin$sp_n == sp_nam[s],]
-#   
-#   suppressMessages(
-#     p_rast <- get_effort(coords_df = cbind(sp_dat$lon, sp_dat$lat),
-#                          rast = km1, # 1km raster 
-#                          fact = 1, 
-#                          name = NULL) )
-#   
-#   r_v <- raster::as.data.frame(sp_rast) %>% 
-#     mutate(n = ifelse(layer>0, 1,0),
-#            tot_cells = length(layer)) %>% 
-#     na.omit()
-#   
-#   sp_1km <- data.frame(species = sp_nam[s],
-#                        counts = sum(r_v$n, na.omit = T),
-#                        tot_cells = unique(r_v$tot_cells))
-#   
-#   
-# }
-
-get_abundance <- function(sp_data, res_rast, sp_vec){
+## function to get the prevalence of each species in a grid of any size
+## it takes any species data, a raster and a vector (or list)
+## of species names
+## The function counts the number of data points that fall within a given cell
+## using the get_effort() function above which returns a raster of counts.
+## This raster is converted to a data frame of 1s and 0s where counts > 0.
+## Returns a data frame with species, the sum of all cells where
+## counts>0 (i.e. number of cells with anything in) and the total number of
+## cells as a checking mechanism.
+get_prevalence <- function(sp_data, res_rast, sp_vec){
   
   out <- lapply(1:length(sp_vec), FUN = function(s){
     
@@ -239,47 +240,43 @@ get_abundance <- function(sp_data, res_rast, sp_vec){
 
 
 
+```
+
+
+```{r, get_prevalence, message=F}
+
+# moths
+sp_nam <- unique(mdf$sp_n)
+
+m_prev <- get_prevalence(sp_data=mdf, res_rast = km1, sp_vec = sp_nam)
+
 
 # butterflies
-bdf_thin <- bdf %>% 
-  mutate(thinned_id = paste(sp_n, TO_GRIDREF, lon, lat)) %>% 
-  distinct(thinned_id, .keep_all = TRUE)
+sp_nam <- unique(bdf$sp_n)
+
+b_prev <- get_prevalence(sp_data=bdf, res_rast = km1, sp_vec = sp_nam)
 
 
 ```
 
-The plots
+
+Plot the outputs
 
 ```{r, rank_abund_plots}
 
-mdf_thin %>% 
-  group_by(sp_n) %>% 
-  tally() %>% 
-  ungroup() %>% 
-  mutate(prop = n/sum(n)) %>% 
-  ggplot(aes(x = reorder(sp_n, -prop), y = (prop))) +
+# moths
+m_prev %>% 
+  ggplot(aes(x = reorder(species, -counts), y = counts)) +
   geom_point() +
-  # geom_path() +
-  # coord_flip() +
-  labs(x = 'species', y = 'proportional abundance (n/sum(n))',
-       title = 'moth rank abundance') +
+  labs(title = 'Moths, 1km prevalence', y='cell counts') +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-
-
-bdf_thin %>% 
-  group_by(sp_n) %>% 
-  tally() %>% 
-  ungroup() %>% 
-  mutate(prop = n/sum(n)) %>% 
-  ggplot(aes(x = reorder(sp_n, -prop), y = (prop))) +
+# butterflies
+b_prev %>% 
+  ggplot(aes(x = reorder(species, -counts), y = counts)) +
   geom_point() +
-  # geom_path() +
-  # coord_flip() +
-  labs(x = 'species', y = 'proportional abundance (n/sum(n))',
-       title = 'butterfly rank abundance') +
+  labs(title = 'Butterflies, 1km prevalence', y='cell counts') +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
 
 ```
 

@@ -45,7 +45,7 @@ p2 <- ggplot(transform(df, variable = factor(variable, levels = c('prob_wt', 'eq
   scale_fill_continuous(type = 'viridis', 
                         name = 'Value of\nDECIDE scores') +
   theme(text = element_text(size = 10))
-
+p2
 
 
 ### try a diagram
