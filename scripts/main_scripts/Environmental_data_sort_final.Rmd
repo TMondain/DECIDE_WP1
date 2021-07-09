@@ -1,0 +1,227 @@
+---
+title: "Environmental data sort"
+output: html_notebook
+---
+
+
+Sorting out the envirnonmental layers to get a raster with 100m resolution grid cells right up to the coastline. Going to use both mode and target landcover classes. 
+
+
+```{r, packages}
+
+library(raster)
+
+```
+
+
+## land cover map
+
+```{r lcm}
+
+# load in 100m perc landcover
+lcm <- raster::stack('C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/CEH_land_cov/lcm_2015/25m_raster/GB/data/lcm2015gb100perc.tif')
+
+names(lcm) <-  c("sea",
+                 "broad_wood",
+                 "conif_wood",
+                 "arable",
+                 "impr_grass",
+                 "neutr_grass",
+                 "calc_grass",
+                 "acid_grass",
+                 "fen_marsh_swamp",
+                 "heather",
+                 "heath_grass",
+                 "bog",
+                 "inland_rock",
+                 "saltwater",
+                 "freshwater",
+                 "sup_lit_rock",
+                 "sup_lit_sed",
+                 "lit_rock",
+                 "lit_sed",
+                 "saltmarsh",
+                 "urban",
+                 "suburban")
+
+# remove sea
+lcm <- dropLayer(lcm, 1)
+
+writeRaster(lcm[[1]], filename = 'C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/CEH_land_cov/lcm_2015/25m_raster/GB/data/lcm2015gb100perc.grd')
+
+# plot(lcm)
+
+
+```
+
+## climate data load and create bioclim variables
+
+2010-2019 inclusive.
+
+```{r climate_bioclim, warning = F, message=F}
+
+
+# load in climate
+path <- "C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/HadUK_dat/"
+
+vars <- c("rainfall", "tasmax", "tasmin")
+
+out_var <- list()
+
+for(i in vars) {
+  
+  # list all the files with a given structure
+  files <- list.files(pattern = i, path = path, full.names = T)
+  
+  # initialise list
+  st_l <- list()
+  
+  for(j in 1:length(files)){
+    
+    # get the files for each year
+    # need to use stack so that each month is a different layer
+    env_d <- raster::stack(files[j])
+    
+    # rename layers 1:12 - months of the year
+    names(env_d) <- paste("M", seq(1:12), sep = "_")  
+    
+    # store as an object to use as an index to average across later
+    ind <- names(env_d)
+    
+    # store the object in the list to use later
+    st_l[[j]] <- env_d
+    
+    
+  }
+  
+  print(i)
+  
+  # now want to average the same layer across multiple raster stacks
+  # basically because I want to get the average min, max temp and rainfall 
+  # for each month over 10 years, 2010 to 2019 inclusive
+  st_o <- stackApply(stack(st_l), # creates a stack of all objects in the list
+                     fun = mean, # takes the mean
+                     indices = ind, # provide an index to get the names
+                     na.rm = T)
+  out_var[[i]] <- st_o
+  
+}
+
+# convert to the 19 bioclimatic variables
+had_bv <- dismo::biovars(prec = out_var$rainfall, tmin = out_var$tasmin, tmax = out_var$tasmax)
+
+# name real names
+names(had_bv) <- c("AnnualTemp",
+                   "MeanDiRange",
+                   "Isotherm",
+                   "TempSeasonality",
+                   "MaxTempWarmestMonth",
+                   "MinTempColdestMonth",
+                   "TempAnnualRange",
+                   "MeanTempWetQuarter",
+                   "MeanTempDriestQuarter",
+                   "MeanTempWarmQuarter",
+                   "MeanTempColdQuarter",
+                   "AnnualPrecip",
+                   "PrecipWetMonth",
+                   "PrecipDriestMonth",
+                   "PrecipSeasonality",
+                   "PrecipWettestQuarter",
+                   "PrecipDriestQuarter",
+                   "PrecipWarmQuarter",
+                   "PrecipColdQuarter")
+
+# plot(had_bv)
+
+
+```
+
+## elevation, slope and aspect
+
+code run on lotus
+
+```{r, elevation}
+
+# el1 <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/eu_dem_v11_E30N30/eu_dem_v11_E30N30.TIF")
+# el2 <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/eu_dem_v11_E30N40/eu_dem_v11_E30N40.TIF")
+# 
+# ext_no_ice <- extent(matrix(c(3000000,3000000, 3900000, 4500000), ncol = 2))
+# el2_n_ice <- crop(el2, ext_no_ice)
+# # plot(el2_n_ice)
+# 
+# # merge the rasters together
+# elev <- merge(el1, el2_n_ice)
+
+
+# ran this code on lotus because of memory allocation issues
+
+elev <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/elevation_UK.tif")
+
+writeRaster(elev, filename = 'C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/elevation_UK.grd',
+            format='raster')
+
+elev_aggr <- raster::aggregate(elev, fact = 4)
+plot(elev_aggr)
+
+elev_reproj <- projectRaster(elev_aggr, lcm[[1]], method = 'bilinear')
+
+# endCluster()
+
+```
+
+## get all variables on scale of land cover map
+
+Using bilinear interpolation
+
+```{r reproj}
+
+rm(list=setdiff(ls(), c("had_bv", "lcm", "elev", "clim_reproj")))
+
+clim_reproj <- projectRaster(had_bv, lcm[[1]], method = 'bilinear')
+
+
+```
+
+## stack all together
+
+```{r stack}
+
+env_dat <- raster::stack(lcm, clim_reproj, elev_reproj)
+
+```
+
+
+## Get to GB only
+
+
+```{r}
+
+library(raster)
+library(sf)
+
+uk_map <- st_as_sf(getData("GADM", country = "GBR", level = 1, path='../../data/environmental_data/'))
+uk_map <- st_transform(uk_map, 27700)
+gb_map <- as_Spatial(uk_map[uk_map$NAME_1 != 'Northern Ireland',])
+plot(gb_map)
+
+envdat_cropped <- mask(envdat, gb_map)
+envdat_cropped
+
+```
+
+
+## Get slope and aspect
+
+```{r}
+
+# get slope and aspect
+slope_asp <- terrain(env_dat, opt = c('slope', 'aspect'), unit = 'degrees', neighbors = 8)
+elev_slope_asp <- raster::stack(elev, slope_asp)
+
+
+```
+
+## Save
+
+
+
