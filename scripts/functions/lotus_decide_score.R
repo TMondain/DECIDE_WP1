@@ -1,4 +1,5 @@
 setwd("~/DECIDE/DECIDE_WP1")
+rm(list = ls())
 
 ## Lotus create decide score
 library(rslurm)
@@ -20,14 +21,17 @@ main_dir = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/'
 # how to weight decide score by records
 weight_record = 'time_since' # NULL if no weighting by records is desired
 
+# taxa
+taxa = c('moth', 'butterfly')
+
 # parameter file
-pars = data.frame(index = 1:(length(method) * length(comb_method) *2)) # 2 is for number of taxa
+pars = data.frame(index = 1:(length(method) * length(comb_method) * length(taxa)))
 
 decide_score <- function(index){
   
   require(raster)
   require(tidyverse)
-  require(sf)
+  # require(sf)
   require(lubridate)
   require(sp)
   
@@ -55,7 +59,7 @@ decide_score <- function(index){
   
   # variation
   var <- raster::stack(list.files(fls, 
-                                  pattern = '_rangeensemblequantiles.grd', 
+                                  pattern = '_weightedvariationensemble.grd', 
                                   full.names = T))
   
   
@@ -86,12 +90,12 @@ decide_score <- function(index){
     if(taxa == 'moth'){
       
       # this being hard-coded is bad!!!
-      dfm_full <- read_csv('/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv')
+      dfm_full <- read.csv('/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv')
       
     } else if(taxa == 'butterfly'){
       
       # this being hard-coded is bad!!!
-      dfm_full <- read_csv('/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv')
+      dfm_full <- read.csv('/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv')
       
     } else { stop('!! Only coded for butterflies and moths !!')}
     
@@ -99,8 +103,8 @@ decide_score <- function(index){
     dfm <- dfm_full %>% 
       dplyr::select(lon, lat, date, year = yr, species = sp_n, common_name=com_n)
     
-    # convert dataframe to sf object
-    st_dfm <- st_as_sf(dfm, coords = c('lon', 'lat'), crs = 27700)
+    # # convert dataframe to sf object
+    # st_dfm <- st_as_sf(dfm, coords = c('lon', 'lat'), crs = 27700)
     
     
     ## weight the records
@@ -113,11 +117,19 @@ decide_score <- function(index){
     {
       
       # Get the counts of records per cell and store as data frame
-      record_counts <- records_df %>% 
-        mutate(lon = unlist(map(records_df$geometry, 1)),
-               lat = unlist(map(records_df$geometry, 2)))  %>% 
-        as.data.frame() %>% 
-        mutate(geometry = NULL)
+      if(class(records_df)[1] == 'sf'){
+        
+        record_counts <- records_df %>% 
+          mutate(lon = unlist(map(records_df$geometry, 1)),
+                 lat = unlist(map(records_df$geometry, 2)))  %>% 
+          as.data.frame() %>% 
+          mutate(geometry = NULL)
+        
+      } else if(class(records_df)[1] == "data.frame"){
+        
+        record_counts <- records_df
+        
+      } else{ stop('!! records_df must be class sf or data.frame') }
       
       if(weight_by_time){
         
@@ -132,7 +144,7 @@ decide_score <- function(index){
           dplyr::summarise(last_rec = max(year), # what is the most recent year?
                            last_date = max(date), # what is the most recent date?
                            yrs_since_last_rec = (year(Sys.Date())-last_rec), # number of years since the last record in a grid cell
-                           days_since_last_rec = Sys.Date() - last_date, # number of days since the last record in a grid cell
+                           # days_since_last_rec = Sys.Date() - last_date, # number of days since the last record in a grid cell
                            score = 1/yrs_since_last_rec) %>% # get the big values small and vice-versa, so that larger numbers are 'bad' and smaller numbers are 'good', so that it matches the number of records layer that's also outputted by this function
           ungroup()
         
@@ -174,7 +186,7 @@ decide_score <- function(index){
         # fill in the raster with the counts from the cell index:
         n_recs[as.numeric(names(counts))] <- counts
         
-      } else {stop('Weight by time mst be TRUE/FALSE')}
+      } else {warning('Weight by time mst be TRUE/FALSE')}
       
       return(n_recs)
       
@@ -185,17 +197,17 @@ decide_score <- function(index){
     # weight by time since last record or raw number of records (sightings unique to each day)
     if(weight_record == 'time_since'){
       
-      rec_counts <- count_records(records_df = st_dfm, 
+      rec_counts <- count_records(records_df = dfm, 
                                   template_raster = decide,
                                   weight_by_time = TRUE)
       
     } else if(weight_record == 'number_record'){
       
-      rec_counts <- count_records(records_df = st_dfm, 
+      rec_counts <- count_records(records_df = dfm, 
                                   template_raster = decide,
                                   weight_by_time = FALSE)
       
-    } else { stop('!! Currently only coded for time since and number_records') }
+    } else { warning('!! Currently only coded for time since and number_records') }
     
     
     ## smooth the DECIDE score
@@ -277,7 +289,7 @@ sdm_slurm <- slurm_apply(decide_score,
 #                              comb_method = rep(comb_method, 2))
 
 # create file for lotus
-file_for_lotus <- expand.grid(taxa = c('moth', 'butterfly'),
+file_for_lotus <- expand.grid(taxa = taxa,
                               pseudoabs_name = pseudoabs_name,
                               method = method, 
                               main_dir = main_dir,

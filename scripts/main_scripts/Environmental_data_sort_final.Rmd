@@ -47,7 +47,6 @@ names(lcm) <-  c("sea",
 # remove sea
 lcm <- dropLayer(lcm, 1)
 
-writeRaster(lcm[[1]], filename = 'C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/CEH_land_cov/lcm_2015/25m_raster/GB/data/lcm2015gb100perc.grd')
 
 # plot(lcm)
 
@@ -133,41 +132,104 @@ names(had_bv) <- c("AnnualTemp",
 
 # plot(had_bv)
 
+```
+
+## Remove collinear weather variables
+
+Probably better to do PCA reduction 
+
+```{r weath_colliner}
+
+v <- usdm::vifcor(had_bv)
+had_bv_nocorrs <- raster::dropLayer(had_bv, match(names(had_bv), v@excluded))
+
+names(had_bv_nocorrs)
 
 ```
 
 ## elevation, slope and aspect
 
-code run on lotus
+Elevation was created and reprojected on Datalabs as it was too large to do on own PC. The script is in DWPTWO project in notebook "processing_elev_raster.R". So, for now, just load in the data that i transferred back from Datalabs - should be on the same scale.
+
+A copy of the code is in the chunk below; I wasn't careful about absolute file paths etc.
+
+```{r load_elev}
+
+elev_100 <- raster('../../Data/environmental_data/elevation_map_coasts_fixed_GB_100m.tif')
+
+
+```
+
 
 ```{r, elevation}
 
-# el1 <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/eu_dem_v11_E30N30/eu_dem_v11_E30N30.TIF")
-# el2 <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/eu_dem_v11_E30N40/eu_dem_v11_E30N40.TIF")
+
+
+# # unzip(zipfile = '/data/notebooks/rstudio-vizz/data/elevation/Copernicus_Elevation.zip', 
+# #       exdir = '/data/notebooks/rstudio-vizz/data/elevation/')
 # 
-# ext_no_ice <- extent(matrix(c(3000000,3000000, 3900000, 4500000), ncol = 2))
-# el2_n_ice <- crop(el2, ext_no_ice)
-# # plot(el2_n_ice)
+# library(raster)
+# 
+# #####    Elevation data
+# 
+# # just a simple walkthrough of the elevation data that's available
+# # the files are pretty big though so they will need to be cropped before using.
+# 
+# # the elevation data are found here:
+# list.files('/data/notebooks/rstudio-vizz/data/elevation/Copernicus_Elevation/')
+# 
+# # this contains a 100m raster for the UK combined
+# uk_100m <- raster::stack('/data/notebooks/rstudio-vizz/data/elevation/Copernicus_Elevation/elevation_UK.tif')
+# uk_100m
+# 
+# 
+# # there are also rasters available at 25m
+# el1 <- raster("/data/notebooks/rstudio-vizz/data/elevation/Copernicus_Elevation/eu_dem_v11_E30N30/eu_dem_v11_E30N30.TIF")
+# el2 <- raster("/data/notebooks/rstudio-vizz/data/elevation/Copernicus_Elevation/eu_dem_v11_E30N40/eu_dem_v11_E30N40.TIF")
 # 
 # # merge the rasters together
-# elev <- merge(el1, el2_n_ice)
+# elev_100 <- merge(el1, el2)
+# 
+# # remove iceland
+# ext_proj <- extent(matrix(c(3000000,3000000, 3900000, 4500000), ncol = 2))
+# elev_100_crop <- crop(elev_100, ext_proj) 
+# plot(elev_100_crop)
+# 
+# 
+# # landcover layer for reprojecting to:
+# lcm <- raster("/data/notebooks/rstudio-setupconsthomas/DECIDE_constraintlayers/Data/environmental_data/100mRastOneLayer.grd")
+# 
+# elev_proj <- raster::projectRaster(elev_100_crop, lcm)
+# elev_proj
+# plot(elev_proj)
+# 
+# ## crop to GB
+# # download map GB
+# uk_map <- st_as_sf(getData("GADM", country = "GBR", level = 1, path='Data/environmental_data'))
+# uk_map <- st_transform(uk_map, 27700)
+# 
+# # remove nrothern ireland
+# gb_map <- uk_map[uk_map$NAME_1 != 'Northern Ireland',]
+# 
+# # check
+# plot(st_geometry(gb_map))
+# 
+# # convert to spatial for use in raster::mask()
+# gb_mask <- as_Spatial(gb_map)
+# gb_mask
+# 
+# # mask elevation
+# m_gb <- raster::mask(elev_proj, gb_mask[1])
+# 
+# plot(m_gb, xlim = c(330000, 360000), ylim = c(440000, 470000))
+# 
+# writeRaster(m_gb, filename = 'Data/environmental_data/elevation_map_coasts_fixed_GB_100m.tiff')
 
 
-# ran this code on lotus because of memory allocation issues
-
-elev <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/elevation_UK.tif")
-
-writeRaster(elev, filename = 'C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/Copernicus_Elevation/elevation_UK.grd',
-            format='raster')
-
-elev_aggr <- raster::aggregate(elev, fact = 4)
-plot(elev_aggr)
-
-elev_reproj <- projectRaster(elev_aggr, lcm[[1]], method = 'bilinear')
-
-# endCluster()
 
 ```
+
+
 
 ## get all variables on scale of land cover map
 
@@ -175,53 +237,126 @@ Using bilinear interpolation
 
 ```{r reproj}
 
-rm(list=setdiff(ls(), c("had_bv", "lcm", "elev", "clim_reproj")))
+rm(list=setdiff(ls(), c("had_bv_nocorrs", "lcm", "elev_100")))
 
-clim_reproj <- projectRaster(had_bv, lcm[[1]], method = 'bilinear')
+clim_reproj <- projectRaster(had_bv_nocorrs, lcm[[1]], method = 'bilinear')
+plot(clim_reproj[[1]]) ## need to remove Northern Ireland
+
+```
+
+## Get to climate to GB only
+
+
+```{r}
+
+
+## crop to GB
+# download map GB
+library(sf)
+uk_map <- st_as_sf(getData("GADM", country = "GBR", level = 1, path='../../data/environmental_data'))
+uk_map <- st_transform(uk_map, 27700)
+
+# remove nrothern ireland
+gb_map <- uk_map[uk_map$NAME_1 != 'Northern Ireland',]
+
+# check
+plot(st_geometry(gb_map))
+
+# convert to spatial for use in raster::mask()
+gb_mask <- as_Spatial(gb_map)
+gb_mask
+
+# mask elevation
+clim_reproj_gb <- raster::mask(clim_reproj, gb_mask[1])
+plot(clim_reproj_gb[[1]])
 
 
 ```
+
 
 ## stack all together
 
 ```{r stack}
 
-env_dat <- raster::stack(lcm, clim_reproj, elev_reproj)
+env_dat <- raster::stack(lcm, clim_reproj_gb, elev_100)
+env_dat
+names(env_dat)
+
+# check
+plot(env_dat[[31]], xlim = c(340000, 350000), ylim = c(679000, 690000)) 
+plot(env_dat[[23]], xlim = c(340000, 350000), ylim = c(679000, 690000)) 
+plot(env_dat[[24]], xlim = c(340000, 350000), ylim = c(679000, 690000)) 
+plot(env_dat[[25]], xlim = c(340000, 350000), ylim = c(679000, 690000)) 
 
 ```
 
 
-## Get to GB only
+## Slope and aspect
 
+```{r slope_asp}
+
+slope <- terrain(env_dat[[31]], opt = "slope", unit = "degrees")
+aspect <- terrain(env_dat[[31]], opt = "aspect", unit = "degrees")
+
+par(mfrow = c(1,2))
+plot(slope)
+plot(aspect)
+par(mfrow = c(1,1))
+
+env_dat <- stack(env_dat, slope, aspect)
+
+```
+
+
+## check that the rasters follow the coast in aberlady
+
+```{r, check}
+
+## check
+library(ggmap)
+
+register_google(key = "AIzaSyDzfFo6Jq1g65BauVhLL-SexOYS5OuH-kA")
+location = c(-2.860564, 56.014902) # aberlady
+gmap <- get_map(location = location, zoom = 12)
+ablad <- crop(env_dat[[23]], extent(c(340000, 350000, 679000, 690000)))
+ogd <- projectRaster(ablad, crs="+proj=longlat +datum=WGS84") %>% as.data.frame(xy=T)
+colnames(ogd) <- c('x','y','z')
+
+ggmap(gmap) +
+  geom_tile(data = ogd, aes(x=x,y=y, fill = z), alpha = 0.7) +
+  coord_quickmap() +
+  scale_fill_gradient(high = 'yellow', low = 'darkblue', na.value = NA) +
+  labs(x= '', y = '')
+
+```
+
+
+All good :)
+
+## Write to file
 
 ```{r}
 
-library(raster)
-library(sf)
-
-uk_map <- st_as_sf(getData("GADM", country = "GBR", level = 1, path='../../data/environmental_data/'))
-uk_map <- st_transform(uk_map, 27700)
-gb_map <- as_Spatial(uk_map[uk_map$NAME_1 != 'Northern Ireland',])
-plot(gb_map)
-
-envdat_cropped <- mask(envdat, gb_map)
-envdat_cropped
+# # Write to file
+# writeRaster(env_dat, filename = '../../data/environmental_data/envdata_fixedcoasts_nocorrs_100m_GB.grd',
+#             format = 'raster')
 
 ```
 
 
-## Get slope and aspect
+## Check to make sure can read in
 
-```{r}
+(Had problem with last one)
 
-# get slope and aspect
-slope_asp <- terrain(env_dat, opt = c('slope', 'aspect'), unit = 'degrees', neighbors = 8)
-elev_slope_asp <- raster::stack(elev, slope_asp)
+```{r correlated conds}
 
+ed <- raster::stack('../../data/environmental_data/envdata_fixedcoasts_nocorrs_100m_GB.grd')
+ed
+
+plot(ed[[32]])
+plot(ed[[33]])
 
 ```
 
-## Save
-
-
+All good!! 
 

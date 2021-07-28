@@ -8,14 +8,14 @@ library(BRCmap)
 
 
 ## read in raster and change to data frame
-r <- raster::stack("data/environmental_data/edat_nocorrs_nosea.grd")
+r <- raster::stack("data/environmental_data/edat_nocorrs_nosea_cropped.grd")
 r <- r[[31]] # choose elevation cos likely to be most complete
 r_df <- as.data.frame(r, xy=T, centroids=TRUE)[,1:2]
 
 
 ## read in moths
-dfm <- read_csv("data/edited_insect_data/moth/DayFlyingMoths.csv")
-dfm <- cbind(dfm, gr_let2num(dfm$TO_GRIDREF))
+dfm <- read_csv("data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv")
+dfm <- cbind(dfm, gr_let2num(dfm$TO_GRIDREF, centre=T))
 
 
 ## get the effort layer at the current resolution (100m)
@@ -34,20 +34,27 @@ hist(r_df$effort) # looks the same as for the data frame - good!
 
 ## convert to raster
 rast_eff <- rasterFromXYZ(r_df)
-writeRaster(rast_eff, filename = 'data/edited_insect_data/moth/effort_layers/100m_effort_moths.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(rast_eff, filename = 'data/edited_insect_data/moth/effort_layers/100m_effort_moths.grd',
+#             format = 'raster', overwrite = T)
 
 
 ## aggregate error raster to 1km (factor of)
 km1_eff <- raster::aggregate(rast_eff, 10, fun=sum)
-writeRaster(km1_eff, filename = 'data/edited_insect_data/moth/effort_layers/1km_effort_moths.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(km1_eff, filename = 'data/edited_insect_data/moth/effort_layers/1km_effort_moths.grd',
+#             format = 'raster', overwrite = T)
 
 
 ## aggregate raster to 10km (factor of 10)
 km10_eff <- raster::aggregate(km1_eff, 10, fun=sum)
-writeRaster(km10_eff, filename = 'data/edited_insect_data/moth/effort_layers/10km_effort_moths.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(km10_eff, filename = 'data/edited_insect_data/moth/effort_layers/10km_effort_moths.grd',
+#             format = 'raster', overwrite = T)
+
+
+#### Spatial Kriging to get an effort layer to downweight DECIDE score 
+eff_100_krig <- focal(x, 
+                      w = matrix(c(0.3,0.3,0.3,0.3,1,
+                                   0.3,0.3,0.3,0.3), nrow = 3, ncol = 3))
+
 
 
 #####     Now for butterflies
@@ -72,18 +79,18 @@ hist(r_df$effort) # looks the same as for the data frame - good!
 
 ## convert to raster
 rast_eff_butt <- rasterFromXYZ(r_df)
-writeRaster(rast_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/100m_effort_butterfly.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(rast_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/100m_effort_butterfly.grd',
+#             format = 'raster', overwrite = T)
 
 
 ## aggregate error raster to 1km (factor of)
 km1_eff_butt <- raster::aggregate(rast_eff_butt, 10, fun=sum)
-writeRaster(km1_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/1km_effort_butterfly.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(km1_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/1km_effort_butterfly.grd',
+#             format = 'raster', overwrite = T)
 
 
 ## aggregate raster to 10km (factor of 10)
 km10_eff_butt <- raster::aggregate(km1_eff_butt, 10, fun=sum)
-writeRaster(km10_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/10km_effort_butterfly.grd',
-            format = 'raster', overwrite = T)
+# writeRaster(km10_eff_butt, filename = 'data/edited_insect_data/butterfly/effort_layers/10km_effort_butterfly.grd',
+#             format = 'raster', overwrite = T)
 

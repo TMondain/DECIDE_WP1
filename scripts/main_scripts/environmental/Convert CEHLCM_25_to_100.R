@@ -1,4 +1,4 @@
-
+rm(list = ls())
 ### Convert CEH LCM from 25m mode raster to 100m mode and 100m percentage cover
 
 
@@ -11,7 +11,7 @@ library(doParallel)
 
 list.files()
 
-lcm_25 <- raster("Data/CEH_land_cov/lcm_2015/GB/data/lcm2015gb25m.tif")
+lcm_25 <- raster("C:/Users/thoval/OneDrive - UKCEH/Documents/DECIDE/DECIDE_WP1/data/raw_data/environmental/CEH_land_cov/lcm_2015/25m_raster/GB/data/lcm2015gb25m.tif")
 lcm_25
 
 
@@ -29,14 +29,11 @@ ext <- raster::extent(xmin, xmax, ymin, ymax)
 
 t <- raster::crop(lcm_25, ext)
 plot(t)
-sort(unique(values(t)))
-
-# 0 is sea but need it to have an index
-values(t) <- values(t) + 1
 
 # create mode raster at 100m res
-t_100_m <- raster::aggregate(t, fact = 4, FUN = mode, na.rm = T)
-t_100_m
+t_100_m <- raster::aggregate(t, fact = 4, 
+                             fun = modal)
+plot(t_100_m)
 
 # percentage cover function using apply - takes a LONG time on test raster
 # so probably need to parallelise it to make it better
@@ -93,10 +90,12 @@ registerDoSEQ()
 lcm_25
 
 # create mode raster at 100m res
-lcm_100_mode <- raster::aggregate(lcm_25, fact = 4, FUN = mode, na.rm = T)
+lcm_100_mode <- raster::aggregate(lcm_25, fact = 4, fun = modal, na.rm = T)
+plot(lcm_100_mode)
+unique(values(lcm_100_mode))
 
-# writeRaster(lcm_100_mode, filename = "Data/CEH_land_cov/lcm_2015/GB/data/lcm2015gb100mode.tif",
-#             format = "GTiff")
+# writeRaster(lcm_100_mode, filename = "data/environmental_data/lcm2015gb100mode.tif",
+#             format = "GTiff", overwrite = T)
 
 
 registerDoParallel(cores = detectCores() - 1)

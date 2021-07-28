@@ -3,6 +3,7 @@ title: "Sorting out species data"
 output: html_notebook
 ---
 
+The 'no duplicates' files contain no duplicates of the same species on the same day; but do contain duplicates on different days.
 
 ```{r}
 
@@ -137,7 +138,7 @@ Get eastings northings and bind with data frame (rename lon lat for simplicity)
 ```{r, east_norths}
 
 # lat lon from grid refs
-ll <- gr_let2num(dfm_df$TO_GRIDREF)
+ll <- gr_let2num(dfm_df$TO_GRIDREF, centre = TRUE)
 head(ll)
 
 dfm_df <- dfm_df %>% 
@@ -223,7 +224,7 @@ b002 <- subset(b00, DT_ID == 1  &
 
 
 # east norths from grid refs
-ll <- gr_let2num(b002$TO_GRIDREF)
+ll <- gr_let2num(b002$TO_GRIDREF, centre = TRUE)
 
 # add eastings northings as lon lat
 b_df <- b002 %>% 

@@ -1,4 +1,5 @@
 setwd("~/DECIDE/DECIDE_WP1") # to return to project directory
+rm(list = ls())
 
 #####    Automated lotus script
 library(rslurm)
@@ -11,7 +12,7 @@ library(tidyverse)
 taxa = 'butterfly' # moth, butterfly
 
 ## choose model of interest
-model = 'me' # one of c('lr', 'gam', 'rf', 'me')
+model = c('lr', 'gam', 'rf', 'me')
 
 # pseudoabsence name
 pa_name = 'PA_thinned_10000nAbs'
@@ -39,17 +40,17 @@ mem_req = 40000
 if(taxa == 'moth'){
   
   ## for moths
-  dfm_df <- read_csv("data/edited_insect_data/moth/DayFlyingMoths.csv")
-
+  dfm_df <- read_csv("data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv")
+  
 } else if(taxa == 'butterfly'){
   
   ## for butterflies
-  dfm_df <- read_csv("data/edited_insect_data/butterfly/BNM_NRMS_No_Duplicates_east_north.csv")
+  dfm_df <- read_csv("data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv")
   
 }
 
 # get the parameters for function
-pars <- data.frame(name_index = seq(1, length(unique(dfm_df$sp_n))))
+pars <- data.frame(name_index = seq(1, length(unique(dfm_df$sp_n))*length(model)))
 
 
 ## the function
@@ -74,10 +75,11 @@ slurm_sdm_boot <- function(name_index) {
   
   ## choose model of interest
   model = file_for_lotus$model[name_index] # 'rf' # one of c('lr', 'gam', 'rf', 'me')
+  warning(paste('!!!   ',model))
   
   # pseudoabsence name
   pa_name = file_for_lotus$pa_name[name_index] # 'PA_thinned_10000nAbs'
- 
+  
   # number of bootstraps
   k = file_for_lotus$k[name_index]
   
@@ -93,9 +95,9 @@ slurm_sdm_boot <- function(name_index) {
   # file_for_lotus = read.csv(paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/", taxa, "/_rslurm_", model, "_", pa_name, "/file_for_lotus.csv"))
   
   # load environmental data
-  env_dat <- raster::stack("/home/users/thoval/DECIDE/data/environmental_data/edat_nocorrs_nosea.gri")
+  env_dat <- raster::stack("/home/users/thoval/DECIDE/data/environmental_data/envdata_fixedcoasts_nocorrs_100m_GB.gri")
   
- 
+  
   # load pseudoabsences based on taxa and name
   if(taxa == 'moth'){
     
@@ -111,7 +113,7 @@ slurm_sdm_boot <- function(name_index) {
   ## Find the species of interest
   species = file_for_lotus$species[name_index]
   warning(paste('!!!   species   !!!  ', species, '  !!!   species   !!!'))
-
+  
   # run the model
   sdm <- fsdm(species = species, model = model, 
               climDat = env_dat, spData = ab1, knots_gam = knots_gam,
@@ -136,7 +138,7 @@ slurm_sdm_boot <- function(name_index) {
                                model = model, 
                                env_data = env_dat)
   
- 
+  
   ## save files ##
   print("#####     Saving files     #####")
   species_name <- gsub(pattern = ' ', replacement = '_', species) # get species name without space
@@ -195,28 +197,39 @@ setwd(paste0('scripts/lotus/', taxa, '/sdm_scripts/'))
 #### slurm apply call
 sdm_slurm <- slurm_apply(slurm_sdm_boot,
                          params = pars,
-                         jobname = paste0(model, '_', pa_name),
-                         nodes = length(unique(dfm_df$sp_n)),
+                         jobname = paste0(paste0(model, collapse = ''), '_', pa_name),
+                         nodes = dim(pars)[1],
                          cpus_per_node = 1,
                          slurm_options = list(partition = queue_name,
                                               time = as.character(time),
                                               mem = mem_req,
-                                              error = paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/', taxa, '/log_files/SDM_Bootstrap_', model,'/SDM_Bootstrap_', model,'-%j-%a.out')),
+                                              error = paste0(paste(model, collapse = '_'),'_error-%j-%a.err')),
                          rscript_path = '',
                          submit = F)
 
 
-file_for_lotus = data.frame(species = unique(dfm_df$sp_n),
-                            taxa = rep(taxa, length = length(unique(dfm_df$sp_n))),
-                            model = rep(model, length = length(unique(dfm_df$sp_n))),
-                            pa_name = rep(pa_name, length = length(unique(dfm_df$sp_n))),
-                            k = rep(k, length = length(unique(dfm_df$sp_n))),
-                            knots_gam = rep(knots_gam, length = length(unique(dfm_df$sp_n))))
+file_for_lotus <- expand.grid(species = unique(dfm_df$sp_n),
+                              taxa = taxa,
+                              model = model,
+                              pa_name = pa_name,
+                              k = k,
+                              knots_gam = knots_gam)
+
+
+# # old file for lotus for running each model separately - deprecated
+# file_for_lotus = data.frame(species = unique(dfm_df$sp_n),
+#                             taxa = rep(taxa, length = length(unique(dfm_df$sp_n))),
+#                             model = rep(model, length = length(unique(dfm_df$sp_n))),
+#                             pa_name = rep(pa_name, length = length(unique(dfm_df$sp_n))),
+#                             k = rep(k, length = length(unique(dfm_df$sp_n))),
+#                             knots_gam = rep(knots_gam, length = length(unique(dfm_df$sp_n))))
+
+
 head(file_for_lotus)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_', model, '_', pa_name, "/file_for_lotus.csv"))
-            
+          file = paste0('_rslurm_', paste0(model, collapse = ''), '_', pa_name, "/file_for_lotus.csv"))
+
 
 
 

@@ -1,5 +1,6 @@
 ## project directory
 setwd("~/DECIDE/DECIDE_WP1")
+rm(list = ls())
 
 ###   Combine predictions from different models on lotus
 library(tidyverse)
@@ -9,10 +10,10 @@ library(rslurm)
 #####  Get parameters
 
 # taxa for slurm output and parameter loading
-taxa = 'butterfly'
-pseudoabs_type = 'PA_thinned_10000nAbs' ## same, still need to change within function when changing
+taxa = 'moth'
+pseudoabs_type = 'PA_thinned_10000nAbs'
 auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
-models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
+# models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
 
 # use the species names from the pseudoabsences
 
@@ -136,15 +137,15 @@ calculate_ensemble <- function(name_index) {
     names(qrange) <- paste0(names, '_', models[m], '_quantile_range')
     qrange_out[[m]] <- qrange
     
-    ### load the quantile min max
-    qmm <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
-                      pattern = paste0(names, "_quantilemaxmin.grd"),
-                      full.names = TRUE)
-    
-    qminmax <- raster::stack(qmm)
-    names(qminmax) <- c(paste0(names, '_', models[m], '_quantile_min'),
-                        paste0(names, '_', models[m], '_quantile_max'))
-    qminmax_out[[m]] <- qminmax
+    # ### load the quantile min max
+    # qmm <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
+    #                   pattern = paste0(names, "_quantilemaxmin.grd"),
+    #                   full.names = TRUE)
+    # 
+    # qminmax <- raster::stack(qmm)
+    # names(qminmax) <- c(paste0(names, '_', models[m], '_quantile_min'),
+    #                     paste0(names, '_', models[m], '_quantile_max'))
+    # qminmax_out[[m]] <- qminmax
     
     
     ### load the auc values
@@ -173,9 +174,9 @@ calculate_ensemble <- function(name_index) {
     means <- do.call('stack', mod_pred_out[-which(sapply(mod_pred_out, is.null))])
     qranges <- do.call('stack', qrange_out[-which(sapply(qrange_out, is.null))])
     
-    # get max and min of corresponding raster layers
-    min_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[1]]))
-    max_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[2]]))
+    # # get max and min of corresponding raster layers
+    # min_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[1]]))
+    # max_stack <- stack(lapply(qminmax_out[-which(sapply(qminmax_out, is.null))], FUN = function(x) x[[2]]))
     
   } else if(!any(sapply(mod_pred_out, is.null))){
     
@@ -183,9 +184,9 @@ calculate_ensemble <- function(name_index) {
     means <- do.call('stack', mod_pred_out)
     qranges <- do.call('stack', qrange_out)
     
-    # get max and min of corresponding raster layers
-    min_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[1]]))
-    max_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[2]]))
+    # # get max and min of corresponding raster layers
+    # min_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[1]]))
+    # max_stack <- stack(lapply(qminmax_out, FUN = function(x) x[[2]]))
     
   }
   
@@ -217,8 +218,8 @@ calculate_ensemble <- function(name_index) {
     
     means <- dropLayer(means, which(aucs < auc_cutoff)) # which() provides the index of which ones meet the statement
     qranges <- dropLayer(qranges, which(aucs < auc_cutoff))
-    min_stack <- dropLayer(min_stack, which(aucs < auc_cutoff))
-    max_stack <- dropLayer(max_stack, which(aucs < auc_cutoff))
+    # min_stack <- dropLayer(min_stack, which(aucs < auc_cutoff))
+    # max_stack <- dropLayer(max_stack, which(aucs < auc_cutoff))
     
     # remove the auc values that fall below cutoff to make sure weighted.mean functions work
     auc_weights <- aucs[aucs>=auc_cutoff] # remove aucs < cutoff
@@ -252,24 +253,24 @@ calculate_ensemble <- function(name_index) {
     
   }
   
-  # Find the maximum and minimum quantiles across all models that ran
-  if(nlayers(min_stack)==1){
-    
-    # if only one model run then just store the min and max stacks
-    # as the quantile output - makes code run faster.
-    min_quant <- min_stack
-    max_quant <- max_stack
-    
-  } else if(nlayers(min_stack>1)){
-    
-    min_quant <- calc(min_stack, min)
-    max_quant <- calc(max_stack, max)
-    
-  }
-  
-  minmax_stack <- stack(min_quant, max_quant)
-  names(minmax_stack) <- c('min_quant', 'max_quant')
-  mod_quant_rnge <- minmax_stack[[2]] - minmax_stack[[1]]
+  # # Find the maximum and minimum quantiles across all models that ran
+  # if(nlayers(min_stack)==1){
+  #   
+  #   # if only one model run then just store the min and max stacks
+  #   # as the quantile output - makes code run faster.
+  #   min_quant <- min_stack
+  #   max_quant <- max_stack
+  #   
+  # } else if(nlayers(min_stack>1)){
+  #   
+  #   min_quant <- calc(min_stack, min)
+  #   max_quant <- calc(max_stack, max)
+  #   
+  # }
+  # 
+  # minmax_stack <- stack(min_quant, max_quant)
+  # names(minmax_stack) <- c('min_quant', 'max_quant')
+  # mod_quant_rnge <- minmax_stack[[2]] - minmax_stack[[1]]
   
   
   ## save the outputs
@@ -279,12 +280,12 @@ calculate_ensemble <- function(name_index) {
               format = 'raster', overwrite = T)
   
   writeRaster(x = wt_qr, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedvariation.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedvariationensemble.grd"),
               format = 'raster', overwrite = T)
   
-  writeRaster(x = mod_quant_rnge, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_rangeensemblequantiles.grd"),
-              format = 'raster', overwrite = T)
+  # writeRaster(x = mod_quant_rnge, 
+  #             filename = paste0(output_directory, names, "_", pseudoabs_type, "_rangeensemblequantiles.grd"),
+  #             format = 'raster', overwrite = T)
   
   
   # store models that failed
@@ -306,7 +307,7 @@ sdm_slurm <- slurm_apply(calculate_ensemble,
                          nodes = length(unique(pars$name_index)),
                          cpus_per_node = 1,
                          slurm_options = list(partition = "short-serial",
-                                              time = "23:59:59",
+                                              time = "01:30:00",
                                               mem = "30000",
                                               error = paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/', taxa, '/combined_model_outputs/error/combinmod_', pseudoabs_type,'-%j-%a.out')),
                          rscript_path = '',
