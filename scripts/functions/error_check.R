@@ -57,6 +57,11 @@ get_failed_models <- function(taxa, species_names, pseudoabs_type, index_file, m
   
   require(purrr)
   
+  # taxa = taxa
+  # species_names = sp_name 
+  # pseudoabs_type = pa_name
+  # index_file = file_for_lotus
+  
   spp_out <- lapply(c(1:length(species_names$name)), FUN = function(name_index){
     
     er_mod <- lapply(c(1:length(models)), FUN = function(m){
@@ -113,62 +118,59 @@ get_error_logs <- function(taxa, failed_models, pseudoabs_type, models = c('lr',
   
   spp_out <- lapply(c(1:length(failed_models$name_index_mods)), FUN = function(n){
     
-    # get the models that failed for a species species
-    failed_mods_list <- failed_models$model[n]
+    # I want to find the name_index of the species
+    # then search for that index in the error outputs
+    error_location <- list.files(slurm_location, 
+                                 pattern = paste0('-', failed_models$name_index_mods[n], '.err'),
+                                 full.names = TRUE) %>% 
+      sort(decreasing = TRUE)
     
-    er_mod <- lapply(c(1:length(failed_mods_list)), FUN = function(m){
+    if(length(error_location) > 1){
       
-      # I want to find the name_index of the species
-      # then search for that index in the error outputs
-      error_location <- list.files(slurm_location, 
-                                   pattern = paste0('-', failed_models$name_index_mods[n], '.err'),
-                                   full.names = TRUE) %>% 
-        sort(decreasing = TRUE)
+      warning(paste("!!!   multiple matching arguments in error log folder for species",
+                    failed_models$species[n], "and model",
+                    failed_models$model[n], ". Index", failed_models$name_index_mods[n], 
+                    "check to make sure that error log is correct and consider deleting old logs for each model run   !!!"))
       
-      if(length(error_location) > 1){
-        
-        warning(paste("!!!   multiple matching arguments in error log folder for species",
-                      failed_models$species[n], "and model",
-                      failed_models$model[n], ". Index", failed_models$name_index_mods[n], 
-                      "check to make sure that error log is correct and consider deleting old logs for each model run   !!!"))
-        
-      }
-      
-      # read the error log into R, skipping the NULL lines
-      error_log <- readLines(error_location[1], skipNul = T)
-      
-      # find the lines that have "error or Error"
-      # give context by including the 10 lines before the first error 
-      # and to the last line in the file
-      if(length(grep(pattern="error|Error", error_log))>0){
-        
-        er_lines <- grep(pattern="error|Error", error_log)
-        
-        cropped_log <- error_log
-        
-      } else if(length(grep(pattern="error|Error", error_log))==0){
-        
-        warning(paste('!!!   No error message in log file for species', 
-                      failed_models$species[n], 'and model',
-                      failed_models$model[n]))
-        cropped_log <- error_log 
-        
-      }
-      
-      return(cropped_log)
-      
-    })
+    }
     
-    names(er_mod) <- paste(failed_models$species[n], failed_mods_list, sep = '_')
+    # read the error log into R, skipping the NULL lines
+    error_log <- readLines(error_location[1], skipNul = T)
     
-    return(er_mod)
+    # find the lines that have "error or Error"
+    # give context by including the 10 lines before the first error 
+    # and to the last line in the file
+    if(length(grep(pattern="error|Error", error_log))>0){
+      
+      cropped_log <- error_log
+      
+    } else if(length(grep(pattern="error|Error", error_log))==0){
+      
+      warning(paste('!!!   No error message in log file for species', 
+                    failed_models$species[n], 'and model',
+                    failed_models$model[n]))
+      cropped_log <- error_log 
+      
+    }
+  
+    names(error_log) <- paste(failed_models$species[n], failed_models$model[n], sep = '_')
+    
+    return(error_log)
     
   })
+  
+  # lapply statement to get the errors on a single line
+  err <- lapply(1:length(spp_out), FUN = function(x){
+    er_lines <- grep(pattern="error|Error", spp_out[[x]])
+    return(spp_out[[x]][er_lines])
+  })
+  
+  failed_models$error <- do.call(c, err)
   
   # name the entries of the list
   names(spp_out) <- failed_models$species
   
-  return(spp_out)
+  return(list(error_logs = spp_out, dataframe = failed_models))
   
 }
 
@@ -179,7 +181,7 @@ get_error_logs <- function(taxa, failed_models, pseudoabs_type, models = c('lr',
 #####      Workflow for checking
 
 # taxa
-taxa = 'moth'
+taxa = 'butterfly'
 
 # pseudoabsence type (i.e. the model run)
 pa_name = 'PA_thinned_10000nAbs'
@@ -201,7 +203,6 @@ failed_mods
 
 # get the associated error logs for each species
 error_logs <- get_error_logs(taxa, failed_mods, pa_name, slurm_location = fls_loc)
-
 error_logs # manually look at what the errors were and decide which ones need to be rerun.
 
 
@@ -210,7 +211,7 @@ error_logs # manually look at what the errors were and decide which ones need to
 #####     resubmit scripts that failed 
 
 # get the lines in file_for_lotus that failed
-file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% failed_mods[1:15,]$name_index_mods,] ## change the indexing numbers for each error set
+file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% failed_mods[1:12,]$name_index_mods,] ## change the indexing numbers for each error set
 write_csv(file_for_lotus_resub, 'file_for_lotus_resub.csv')
 
 #####    Automated lotus script
@@ -400,3 +401,4 @@ sdm_slurm <- slurm_apply(slurm_sdm_boot,
                          rscript_path = '',
                          submit = T)
 
+get_job_status(sdm_slurm)
