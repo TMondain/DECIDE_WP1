@@ -152,7 +152,7 @@ get_error_logs <- function(taxa, failed_models, pseudoabs_type, models = c('lr',
       cropped_log <- error_log 
       
     }
-  
+    
     names(error_log) <- paste(failed_models$species[n], failed_models$model[n], sep = '_')
     
     return(error_log)
@@ -188,7 +188,7 @@ pa_name = 'PA_thinned_10000nAbs'
 
 # set working directory to rslurm folder 
 # to be able to access the file_for_lotus
-fls_loc <- paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/',taxa, '/_rslurm_lrgamrfme_', pa_name)
+fls_loc <- paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/',taxa, '/_rslurm_resub_lrgamrfme_', pa_name)
 setwd(fls_loc)
 
 # read in file for lotus
@@ -211,7 +211,7 @@ error_logs # manually look at what the errors were and decide which ones need to
 #####     resubmit scripts that failed 
 
 # get the lines in file_for_lotus that failed
-file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% failed_mods[1:12,]$name_index_mods,] ## change the indexing numbers for each error set
+file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% failed_mods[1:7,]$name_index_mods,] ## change the indexing numbers for each error set
 write_csv(file_for_lotus_resub, 'file_for_lotus_resub.csv')
 
 #####    Automated lotus script
@@ -271,7 +271,7 @@ slurm_sdm_boot <- function(name_index) {
   taxa = file_for_lotus$taxa[name_index] #'moth' # moth, butterfly
   
   ## choose model of interest
-  model = file_for_lotus$model[name_index] # 'rf' # one of c('lr', 'gam', 'rf', 'me')
+  model = file_for_lotus$model[name_index] 
   warning(paste('!!!   ',model))
   
   # pseudoabsence name
@@ -309,7 +309,7 @@ slurm_sdm_boot <- function(name_index) {
   
   ## Find the species of interest
   species = file_for_lotus$species[name_index]
-  warning(paste('!!!   species   !!!  ', species, '  !!!   species   !!!'))
+  print(paste('!!!   species   !!!  ', species, '  !!!   species   !!!'))
   
   # run the model
   sdm <- fsdm(species = species, model = model, 

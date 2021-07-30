@@ -9,6 +9,8 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
   ind <- which(names(spData) == species)
   spDat <- spData[[ind]]
   
+  print(species)
+  
   if (is.null(spDat)) {
     out <- NULL
   }
