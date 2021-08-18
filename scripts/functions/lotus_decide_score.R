@@ -9,6 +9,9 @@ library(rslurm)
 # pseudoabsence name (i.e. the model)
 pseudoabs_name = 'PA_thinned_10000nAbs'
 
+# Combine SD method (to be  tagged onto pseudo abs name)
+sd_comb = 'max_score' # or 'mean_score' or ''
+
 # decide score method
 method = 'var_only' #c('sqroot_var_preds', 'equal_weighting', 'sqroot_preds_var', 'var_only') # 'var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var', 'var_only'
 
@@ -44,6 +47,7 @@ decide_score <- function(index){
   # get the parameters set
   taxa = file_for_lotus$taxa[index]
   pseudoabs_name = file_for_lotus$pseudoabs_name[index]
+  sd_comb = file_for_lotus$sd_comb[index]
   method = file_for_lotus$method[index]
   comb_method = file_for_lotus$comb_method[index]
   weight_record = file_for_lotus$weight_record[index]
@@ -54,12 +58,12 @@ decide_score <- function(index){
   
   # predictions
   preds <- raster::stack(list.files(fls, 
-                                    pattern = '_weightedmeanensemble.grd', 
+                                    pattern = paste0(sd_comb, '_weightedmeanensemble.grd'), 
                                     full.names = T))
   
   # variation
   var <- raster::stack(list.files(fls, 
-                                  pattern = '_weightedvariationensemble.grd', 
+                                  pattern = paste0(sd_comb, '_weightedvariationensemble.grd'), 
                                   full.names = T))
   
   
@@ -206,6 +210,7 @@ decide_score <- function(index){
     ## smooth the DECIDE score
     
     ### Function to weight the DECIDE score
+    
     smooth_recording <- function(weighted_layer, # layer to be weighted
                                  effort_raster,
                                  sm_matrix = matrix(c(0,    0.09, 0.11, 0.09,    0,
@@ -222,8 +227,9 @@ decide_score <- function(index){
                                w = sm_matrix,
                                fun = fun,
                                pad = TRUE,
-                               padValue = 0,
-                               NAonly=T)
+                               na.rm = TRUE,
+                               padValue = NA,
+                               NAonly = FALSE)
       
       # Convert recording to weighting
       weighting <- smoothed_effort
@@ -243,6 +249,7 @@ decide_score <- function(index){
       
     }
     
+    
     # do the smoothing
     sr <- smooth_recording(weighted_layer = decide,
                            effort_raster = rec_counts,
@@ -254,7 +261,7 @@ decide_score <- function(index){
   
   ## write single raster 
   writeRaster(x = decide, 
-              filename = paste0(main_dir, 'decide_scores/outputs/', taxa, '_',  pseudoabs_name, '_decide_score_', method, '_', comb_method, '_', weight_record, '.grd'),
+              filename = paste0(main_dir, 'decide_scores/outputs/', taxa, '_',  pseudoabs_name, '_', sd_comb, '_decide_score_', method, '_', comb_method, '_', weight_record, '.grd'),
               format = 'raster', overwrite = T)
   
 }
@@ -265,11 +272,11 @@ setwd(paste0('scripts/lotus/decide_scores/'))
 
 sdm_slurm <- slurm_apply(decide_score,
                          params = pars,
-                         jobname = paste0("decide_scores_", pseudoabs_name, "_", paste(method, collapse = '_'), "_", comb_method, '_', weight_record),
+                         jobname = paste0("decide_scores_", pseudoabs_name, '_', sd_comb, "_", paste(method, collapse = '_'), "_", comb_method, '_', weight_record),
                          nodes = length(unique(pars$index)),
                          cpus_per_node = 1,
-                         slurm_options = list(partition = "short-serial-4hr",
-                                              time = "03:59:59",
+                         slurm_options = list(partition = "test",
+                                              time = "01:20:00",
                                               mem = "20000",
                                               output = paste0(paste(method, collapse = '_'),'_out-%j-%a.out'),
                                               error = paste0(paste(method, collapse = '_'),'_error-%j-%a.err')),
@@ -287,10 +294,11 @@ sdm_slurm <- slurm_apply(decide_score,
 # create file for lotus
 file_for_lotus <- expand.grid(taxa = taxa,
                               pseudoabs_name = pseudoabs_name,
+                              sd_comb = sd_comb,
                               method = method, 
                               main_dir = main_dir,
                               comb_method = comb_method, 
                               weight_record = weight_record)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_decide_scores_', pseudoabs_name, '_', paste(method, collapse = '_'), '_', comb_method, '_', weight_record, '/file_for_lotus.csv'))
+          file = paste0('_rslurm_decide_scores_', pseudoabs_name, '_', sd_comb, '_', paste(method, collapse = '_'), '_', comb_method, '_', weight_record, '/file_for_lotus.csv'))

@@ -257,6 +257,11 @@ fsdm <- function(species, model, climDat, spData, k, write, outPath, #inters = F
                      weights = weights)
         }
         
+        # # for random forests need to put this in instead because of problem with evaluate and random forests
+        # rf.pred <- predict(mod, type = "prob")[,2]
+        # e[[i]] <- dismo::evaluate(p = rf.pred[test$val == 1 ], 
+        #                           a = rf.pred[test$val == 0 ])
+        
         e[[i]] <- dismo::evaluate(p = test[test$val == 1, ], 
                                   a = test[test$val == 0, ], 
                                   mod, tr = seq(0, 1, length.out = 200))

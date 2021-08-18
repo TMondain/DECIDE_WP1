@@ -13,6 +13,7 @@ library(rslurm)
 taxa = 'butterfly'
 pseudoabs_type = 'PA_thinned_10000nAbs'
 auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
+sd_comb='max_score'
 # models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
 
 # use the species names from the pseudoabsences
@@ -55,6 +56,9 @@ calculate_ensemble <- function(name_index) {
   # auc cutoff for dropping models
   auc_cutoff = file_for_lotus$auc_cutoff[name_index] ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
   
+  # how to combine standard deviation
+  sd_comb=file_for_lotus$sd_comb[name_index]
+  
   # models to check
   models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
@@ -73,26 +77,6 @@ calculate_ensemble <- function(name_index) {
   qminmax_out <- list()
   auc_out <- list()
   errored_models <- list()
-  
-  
-  # ### 3. get names and species of interest 
-  # if(taxa == 'moth'){
-  #   
-  #   load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/moth_", pseudoabs_type, ".rdata")) ## moths
-  #   names <- gsub(pattern = ' ', 
-  #                 replacement = '_',
-  #                 x = names(ab1)) %>% 
-  #     sort()
-  #   
-  # } else if(taxa == 'butterfly'){
-  #   
-  #   load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/butterfly_", pseudoabs_type, ".rdata")) ## butterflies
-  #   names <- gsub(pattern = ' ', 
-  #                 replacement = '_',
-  #                 x =  names(res_out)) %>% 
-  #     sort()
-  #   
-  # } else {stop('whoooaaaahhhh there boy, du calme! Name  not right')}
   
   
   print(names)
@@ -138,6 +122,7 @@ calculate_ensemble <- function(name_index) {
     qrange_out[[m]] <- qrange
     
     # ### load the quantile min max
+    # # removed because moving to standard deviation
     # qmm <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
     #                   pattern = paste0(names, "_quantilemaxmin.grd"),
     #                   full.names = TRUE)
@@ -212,7 +197,7 @@ calculate_ensemble <- function(name_index) {
     auc_weights <- aucs
     
     write.csv(auc_df, 
-              file = paste0(output_directory, names, '_aucOuts.csv'))
+              file = paste0(output_directory, names, "_", sd_comb, '_aucOuts.csv'))
     
   } else if(any(aucs < auc_cutoff) | all(aucs > auc_cutoff)) { # this else if statement works with all cases where at least some of the models have AUC > than the cutoff.
     
@@ -233,7 +218,7 @@ calculate_ensemble <- function(name_index) {
                                                    auc_cutoff, ". Models dropped:", auc_df$model_id[auc_df$used == 'dropped']))}
     
     write.csv(auc_df, 
-              file = paste0(output_directory, names, '_aucOuts.csv'))
+              file = paste0(output_directory, names, "_", sd_comb, '_aucOuts.csv'))
     
   } 
   
@@ -243,7 +228,14 @@ calculate_ensemble <- function(name_index) {
     
     print("#####     calculating weighted ensemble raster     #####")
     wt_mean <- raster::weighted.mean(x = means, w = auc_weights)
-    wt_qr <- raster::weighted.mean(x = qranges, w = auc_weights)
+    
+    # whether to take the mean standard deviation (weighted by auc)
+    # or take the maximum standard deviation
+    if(sd_comb == 'mean_score'){
+      wt_qr <- raster::weighted.mean(x = qranges, w = auc_weights)
+    } else if(sd_comb =='max_score'){
+      wt_qr <- calc(qranges, fun = max)
+    }
     
   } else { # otherwise just save the means as the wt_mean and ranges
     
@@ -276,11 +268,11 @@ calculate_ensemble <- function(name_index) {
   ## save the outputs
   print("#####     Saving prediction raster     #####")
   writeRaster(x = wt_mean, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedmeanensemble.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, "_weightedmeanensemble.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = wt_qr, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_weightedvariationensemble.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, "_weightedvariationensemble.grd"),
               format = 'raster', overwrite = T)
   
   # writeRaster(x = mod_quant_rnge, 
@@ -291,7 +283,7 @@ calculate_ensemble <- function(name_index) {
   # store models that failed
   error_out <- do.call('rbind', errored_models)
   write.csv(error_out, 
-            file = paste0(output_directory, names, "_", pseudoabs_type, '_failed_models.csv'))
+            file = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, '_failed_models.csv'))
   
 }
 
@@ -303,13 +295,13 @@ setwd(paste0('scripts/lotus/', taxa, '/combine_models_scripts'))
 
 sdm_slurm <- slurm_apply(calculate_ensemble,
                          params = pars,
-                         jobname = paste0(taxa, "_", pseudoabs_type, "_weighted_ensemble"),
+                         jobname = paste0(taxa, "_", pseudoabs_type, "_", sd_comb, "_weighted_ensemble"),
                          nodes = length(unique(pars$name_index)),
                          cpus_per_node = 1,
                          slurm_options = list(partition = "short-serial",
-                                              time = "01:30:00",
+                                              time = "02:00:00",
                                               mem = "30000",
-                                              error = paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/', taxa, '/combined_model_outputs/error/combinmod_', pseudoabs_type,'-%j-%a.out')),
+                                              error = paste0('error_combinmod_', pseudoabs_type, "_", sd_comb,'-%j-%a.out')),
                          rscript_path = '',
                          submit = F)
 
@@ -318,8 +310,9 @@ sdm_slurm <- slurm_apply(calculate_ensemble,
 file_for_lotus <- data.frame(species = gsub(pattern = ' ', replacement = '_', x = unique(species)),
                              taxa = rep(taxa, length = length(unique(species))),
                              pseudoabs_type = rep(pseudoabs_type, length = length(unique(species))),
-                             auc_cutoff = rep(auc_cutoff, length = length(unique(species))))
+                             auc_cutoff = rep(auc_cutoff, length = length(unique(species))),
+                             sd_comb = rep(sd_comb, length = length(unique(species))))
 head(file_for_lotus)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_', taxa, "_", pseudoabs_type, "_weighted_ensemble", "/file_for_lotus.csv"))
+          file = paste0('_rslurm_', taxa, "_", pseudoabs_type, "_", sd_comb, "_weighted_ensemble", "/file_for_lotus.csv"))

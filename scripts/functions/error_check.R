@@ -188,7 +188,7 @@ pa_name = 'PA_thinned_10000nAbs'
 
 # set working directory to rslurm folder 
 # to be able to access the file_for_lotus
-fls_loc <- paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/',taxa, '/_rslurm_resub_lrgamrfme_', pa_name)
+fls_loc <- paste0('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/',taxa, '/_rslurm_lrgamrfme_', pa_name)
 setwd(fls_loc)
 
 # read in file for lotus
@@ -211,7 +211,8 @@ error_logs # manually look at what the errors were and decide which ones need to
 #####     resubmit scripts that failed 
 
 # get the lines in file_for_lotus that failed
-file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% failed_mods[1:7,]$name_index_mods,] ## change the indexing numbers for each error set
+# need the +1 because it's matching with the R code not the linux code
+file_for_lotus_resub <- file_for_lotus[file_for_lotus$X %in% (failed_mods$name_index_mods[1:6]+1),] ## change the indexing numbers for each error set
 write_csv(file_for_lotus_resub, 'file_for_lotus_resub.csv')
 
 #####    Automated lotus script
