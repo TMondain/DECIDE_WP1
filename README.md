@@ -63,7 +63,7 @@ The modelling workflow follows five steps (with scripts):
 2.  Running the SDMs and producing predictions (`automated_lotus_sdms_predictions.R`)
 3.  Error check and rerun script (`error_check.R`)
 4.  Combining the models for each species (`Lotus_combine_models.R`)
-5.  creating the DECIDE score (`lotus_decide_score.R`)
+5.  Creating the DECIDE score (`lotus_decide_score.R`)
 
 ### Step 1 - Pseudoabsences
 
