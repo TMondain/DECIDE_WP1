@@ -51,11 +51,11 @@ The only two taxa that have been analysed so far (08/10/2021) are butterflies an
 
 ### Transfer to Lotus
 
-The files generated from these two scripts, the environmental raster stack and the species datasets, need to be transferred to Lotus for the rest of the workflow. Directories will need to be changed for someone else's computer (Make an issue in DECIDE WP1 - add directory to inputs).
+The files generated from these two scripts, the environmental raster stack and the species datasets, need to be transferred to Lotus for the rest of the workflow. Directories will need to be changed before running the scripts.
 
 ## 2. The modelling
 
-All of the scripts for doing the modelling, except for step 1, through to creating the DECIDE score are found in the `scripts/functions/` directory, with the prefix 'lotus' because all are run on the Lotus HPC. Step 1, generating the pseudoabsences, is still run on Lotus but I haven't yet created an automated script for this yet like I have done for the other steps. I won't go into too much detail here about how each of the scripts work, but will explain the general workflow. The way the models are currently set up, the scripts need to be run on your PC and then the folders created need to be transferred to your directory
+All of the scripts for doing the modelling, except for step 1, through to creating the DECIDE score are found in the `scripts/functions/` directory, with the prefix 'lotus' because all are run on the Lotus HPC. Step 1, generating the pseudoabsences, is still run on Lotus but I haven't yet created an automated script for this yet like I have done for the other steps. I won't go into too much detail here about how each of the scripts work, but will explain the general workflow. The way the models are currently set up, the scripts need to be run on your PC and then the folders created need to be transferred to your directory on Lotus.
 
 The modelling workflow follows five steps (with scripts):
 
@@ -146,6 +146,6 @@ To transfer files to the object store, need to use the terminal in mobaxterm or 
 
     # then run the code to transfer the files
     # this code works recursively because of -r
-    s4cmd --endpoint=http://ceh-datalab-U.s3.jc.rl.ac.uk dsync -r -c 15 /location/of/files/to/transfer/ s3://brc-s3/location/of/file/destination/
+    s4cmd --endpoint=datalabs_url dsync -r -c 15 /location/of/files/to/transfer/ s3://brc-s3/location/of/file/destination/
 
 # Fin.
