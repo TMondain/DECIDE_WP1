@@ -146,6 +146,6 @@ To transfer files to the object store, need to use the terminal in mobaxterm or 
 
     # then run the code to transfer the files
     # this code works recursively because of -r
-    s4cmd --endpoint=datalabs_url dsync -r -c 15 /location/of/files/to/transfer/ s3://brc-s3/location/of/file/destination/
+    s4cmd --endpoint=datalabs_url dsync -r -c 15 /location/of/files/to/transfer/ location/of/file/destination/on/object/store
 
 # Fin.
