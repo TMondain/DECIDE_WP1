@@ -1,9 +1,5 @@
----
-title: "DECIDE Species Distribution Modelling workflow"
-output: html_notebook
-editor_options: 
-  chunk_output_type: inline
----
+
+# DECIDE Species Distribution Modelling workflow
 
 This repository contains all the code necessary to run the species distribution models (SDMs) for the DECIDE project. These models are currently being run for both day-flying moths and butterflies, with plans to run orthoptera and all moths at a later stage. All of the methods are coded in 'R', but some of the scripts need to be run on the Lotus HPC, because of the computational requirements.
 
