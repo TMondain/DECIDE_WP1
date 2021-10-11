@@ -38,12 +38,12 @@ These need to be converted to the desired 100m resolution maps and reprojected o
 
 The first converts the UKCEH LCM from the 25m resolution to the 100m percentage cover of each of the 21 landcover classifications (be warned, this script isn't very well commented or tidy - needs improving). The second, covers all the rest of the data processing (except elevation):
 
--   converting HAD-UK data raw data into the 19 bioclim variables, and reducing these based on correlations between them
+-   converting HAD-UK raw data into the 19 bioclim variables, and reducing these based on correlations between them
 -   getting slope and aspect from the elevation data
 -   masking the three layers to include only Great Britain
 -   reprojecting all layers to the LCM projection
 
-In the `Envrinomental_data_sort_final.Rmd` script, there is also code to combine the elevation rasters and convert them from 25m to 100m. This is currently commented out because it kept crashing my computer. However, it *has* worked in the past and so might work for you. I ended up having to run it on Datalabs, but this is all documented in the `Envrinomental_data_sort_final.Rmd` script.
+In the `Envrinomental_data_sort_final.Rmd` script, there is also code to combine the elevation rasters and convert them from 25m to 100m. This is currently commented out because it kept crashing my computer. However, it **has** worked in the past and so might work for you. I ended up having to run it on Datalabs, but this is all documented in the `Envrinomental_data_sort_final.Rmd` script.
 
 ### Species data
 
