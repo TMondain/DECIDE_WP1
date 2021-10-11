@@ -22,8 +22,8 @@ p1 <- subset(df, variable == 'equal') %>%
   theme_bw() +
   labs(x='Probability of presence', y='Uncertainty') +
   scale_fill_continuous(type = 'viridis', 
-                        name = 'Value of\nDECIDE scores') +
-  geom_text(aes(fontface=2), label = 'DECIDE', x = 0.75, y=0.75, colour = 'white', size = text_size) +
+                        name = 'Value of records\nto the project') +
+  geom_text(aes(fontface=2), label = 'Optimal\nsampling location?', x = 0.75, y=0.75, colour = 'white', size = text_size) +
   geom_text(aes(fontface=2), label = 'Model-focused', x = 0.25, y=0.75, colour = 'white', size = text_size) +
   geom_text(aes(fontface=2), label = 'User-focused', x = 0.75, y=0.25, colour = 'white', size = text_size) +
   geom_text(aes(fontface=2), label = 'Observations\nunecessary', x = 0.25, y=0.25, colour = 'white', size = text_size) +
@@ -39,11 +39,11 @@ p2 <- ggplot(transform(df, variable = factor(variable, levels = c('prob_wt', 'eq
   facet_grid(~variable,
              labeller = as_labeller(c('equal' = 'Equally weighted',
                                       'uncert_wt' = 'Uncertainty favoured',
-                                      'prob_wt' = 'Probability favoured'))) +
+                                      'prob_wt' = 'Presence favoured'))) +
   theme_bw() +
   labs(x='Probability of presence', y='Uncertainty') +
   scale_fill_continuous(type = 'viridis', 
-                        name = 'Value of\nDECIDE scores') +
+                        name = 'Location sampling\npriority') +
   theme(text = element_text(size = 10))
 p2
 
@@ -58,7 +58,7 @@ data %>%
 p + inset_element(p1, 0.351, 0.58, 0.61, 0.98,
                   align_to = 'full') +
   inset_element(p2, 0.1, 0.1, 0.9, 0.5) +
-  plot_layout(guides = 'collect') +
+  plot_layout(guides = 'collect') 
   
 
 # how does it affect distributions over space?
