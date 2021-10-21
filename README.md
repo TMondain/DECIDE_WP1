@@ -16,7 +16,7 @@ Files are initially divided into:
 
 -   `outputs/`
 
-The `scripts/` folder contains the bulk of the work. All functions are found in the subdirectory `scripts/functions/`. All of the modelling relies on the functions in the script: `scripts/functions/edited_rob_functions.R`; running the models on Lotus relies on the scripts prefixed with 'lotus'. All of the SDM functions are based on **Rob Boyd's** `soaR` package (GitHub link: ....).
+The `scripts/` folder contains the bulk of the work. All functions are found in the subdirectory `scripts/functions/`. All of the modelling relies on the functions in the script: `scripts/functions/edited_rob_functions.R`; running the models on Lotus relies on the scripts prefixed with 'lotus'. All of the SDM functions are based on **Rob Boyd's** `soaR` package (GitHub link: https://github.com/robboyd/soaR).
 
 # Workflow and functions
 
