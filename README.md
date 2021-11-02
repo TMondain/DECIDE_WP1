@@ -5,16 +5,27 @@ This repository contains all the code necessary to run the species distribution 
 
 # Directory structure
 
-Files are initially divided into:
+Files are organised like so:
 
 -   `scripts/`
 
-    -   `functions/`
-    -   `main_scripts/`
+    -   `1_data_preparation/` - Processing the raw environmental data and species data
+        -  `environmental/` - processing the landcover map and cliamte data ready for use in SDMs
+        -  `species/` - (subdivided again into `butterfly` and `moth`) processing the species occurence data ready for SDMs
+    -   `2_effort_mapping/` - creating the effort layer that is used to downweight the decide score
+    -   `3_run_sdms/` - running the SDMs from the processed data
+    -   `4_create_decide_score/` - combining the SDM uncertainty and 
+    -   `x_exploratory_analyses/` - a place for small standalone scripts used to testing or diagnosing
 
--   `data/`
+-   `data/` - Inputs for the SDMs
+    -   `raw_data/` - Containing the raw data files as it was provided/downloaded from source
+        -  `environmental/` - eg. raw landcover map as downloaded
+        -  `species/` - eg. species records as downloaded from iRecord
+    -   `derived_data/` - Containing data that has been manipulated
+        -  `environmental/` - Prepared environmental data eg. landcover map adapted to 100x100m resolution ready for SDM 
+        -  `species/` - Prepared species occurence data ready for SDM
 
--   `outputs/`
+-   `outputs/` - Outputs from the SDMs
 
 The `scripts/` folder contains the bulk of the work. All functions are found in the subdirectory `scripts/functions/`. All of the modelling relies on the functions in the script: `scripts/functions/edited_rob_functions.R`; running the models on Lotus relies on the scripts prefixed with 'lotus'. All of the SDM functions are based on **Rob Boyd's** `soaR` package (https://github.com/robboyd/soaR).
 
