@@ -16,6 +16,9 @@ library(lubridate)
 # do we want to write the CSVs out?
 Write = TRUE
 
+# suffix to give the data
+suffix = gsub('-', '_', Sys.Date())
+
 
 ```
 
@@ -150,7 +153,8 @@ head(dfm_df)
 
 if(Write){
   
-  write.csv(dfm_df, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_with_duplicates.csv')
+  write.csv(dfm_df, 
+            file = paste0('../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_with_duplicates_', suffix, '.csv'))
   
 }
 
@@ -169,7 +173,8 @@ dfm_df_no_dups <- dfm_df %>%
 
 if(Write){
   
-  write.csv(dfm_df_no_dups, file = '../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv')
+  write.csv(dfm_df_no_dups, 
+            file = paste0('../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates_', suffix, '.csv'))
   
 }
 
@@ -181,7 +186,7 @@ if(Write){
 ```{r, restart}
 
 # remove everything except 'write'
-rm(list=setdiff(ls(), "Write"))
+rm(list=setdiff(ls(), c("Write", "suffix")))
 
 
 ```
@@ -191,7 +196,7 @@ rm(list=setdiff(ls(), "Write"))
 
 
 # get list of files
-f <- list.files(path = '../../data/raw_data/butterfly/', full.names = TRUE)
+f <- list.files(path = '../../data/raw_data/butterfly/', full.names = TRUE, recursive = T)
 f
 
 # read subset of NBN data to test 2000 - 2010
@@ -201,7 +206,7 @@ b10 <- read_csv(f[2])
 b00 <- rbind(b00, b10)
 
 # get species codes
-l_n <- read_csv(f[3])
+l_n <- read_csv(f[6])
 
 
 ```
@@ -236,11 +241,11 @@ head(b_df)
 
 if(Write){
   
-  write.csv(b_df, file = '../../data/edited_insect_data/butterfly/butterfly_EastNorths_with_duplicates.csv')
+  write.csv(b_df, file = paste0('../../data/edited_insect_data/butterfly/butterfly_EastNorths_with_duplicates_', suffix, '.csv'))
   
 }
 
-
+getwd()
 
 ```
 
@@ -253,10 +258,11 @@ b_df_no_dups <- b_df %>%
 
 if(Write){
   
-  write.csv(b_df_no_dups, file = '../../data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv')
+  write.csv(b_df_no_dups, 
+            file = paste0('../../data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates_', suffix, '.csv'))
   
 }
-
+getwd()
 
 ```
 
