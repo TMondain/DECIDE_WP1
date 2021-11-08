@@ -62,7 +62,7 @@ choose 100m resolution, match latin names.
 
 # only get precision 100 and recorded on the same date
 df <- subset(main_df, DT_ID == 1  & # start and end on same day
-                 TO_PRECISION == 100) %>% 
+               TO_PRECISION == 100) %>% 
   mutate(date = dmy(TO_STARTDATE),
          yr = year(date),
          jd = yday(date),
