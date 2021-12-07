@@ -51,21 +51,29 @@ slurm_pseudoabs_fun <- function(species_name, nAbs = 10000, matchPres = FALSE, m
 library(rslurm)
 library(tidyverse)
 
+setwd('/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/pseudoabsences')
+
 # create the parameters file
 
 # butterfly data
-butt_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv")
+butt_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates_2021_12_06.csv")
 butt_sp <- unique(butt_df$sp_n)
 
 # moth data
-moth_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv")
+moth_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv")
 moth_sp <- unique(moth_df$sp_n)
 
+# night-flying moth data
+nfmoth_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/NightFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv")
+nfmoth_sp <- unique(nfmoth_df$sp_n)
+
+
 # parameters
-pars <- data.frame(species_name = c(butt_sp, moth_sp), 
+pars <- data.frame(species_name = c(butt_sp, moth_sp, nfmoth_sp), 
                    env_dat = '/home/users/thoval/DECIDE/data/environmental_data/envdata_fixedcoasts_nocorrs_100m_GB.grd',
-                   species_data = c(rep("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv", length(butt_sp)),
-                                    rep("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv", length(moth_sp))),
+                   species_data = c(rep("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates_2021_12_06.csv", length(butt_sp)),
+                                    rep("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv", length(moth_sp)),
+                                    rep("/home/users/thoval/DECIDE/data/species_data/NightFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv", length(nfmoth_sp))),
                    nAbs = 10000, 
                    matchPres = FALSE, 
                    minYear = 2000, 
@@ -81,11 +89,11 @@ dim(pars)
 pseudo_slurm <- slurm_apply(slurm_pseudoabs_fun,
                             params = pars,
                             jobname = 'pseudoabsences',
-                            nodes = length(pars$spp_index),
+                            nodes = nrow(pars),
                             cpus_per_node = 1,
                             slurm_options = list(partition = "short-serial-4hr", 
                                                  time = "03:59:59", 
-                                                 mem = "6000",
+                                                 mem = "20000",
                                                  error = 'pseudo_abs_err-%j-%a.out',
                                                  account = "short4hr"),
                             submit = TRUE)
@@ -111,11 +119,16 @@ butt_sp <- unique(butt_df$sp_n)
 moth_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv")
 moth_sp <- unique(moth_df$sp_n)
 
+# night-flying moth data
+nfmoth_df <- read_csv("/home/users/thoval/DECIDE/data/species_data/NightFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv")
+nfmoth_sp <- unique(nfmoth_df$sp_n)
+
 # parameters
-pars <- data.frame(species_name = c(butt_sp, moth_sp), 
+pars <- data.frame(species_name = c(butt_sp, moth_sp, nfmoth_sp), 
                    env_dat = '/home/users/thoval/DECIDE/data/environmental_data/envdata_fixedcoasts_nocorrs_100m_GB.grd',
-                   species_data = c(rep("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv", length(butt_sp)),
-                                    rep("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv", length(moth_sp))),
+                   species_data = c(rep("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates_2021_12_06.csv", length(butt_sp)),
+                                    rep("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv", length(moth_sp)),
+                                    rep("/home/users/thoval/DECIDE/data/species_data/NightFlyingMoths_EastNorths_no_duplicates_2021_12_06.csv", length(nfmoth_sp))),
                    nAbs = 10000, 
                    matchPres = FALSE, 
                    minYear = 2000, 
@@ -129,7 +142,7 @@ pars <- data.frame(species_name = c(butt_sp, moth_sp),
 pseudo_slurm <- slurm_apply(slurm_pseudoabs_fun,
                             params = pars,
                             jobname = 'pseudoabsences',
-                            nodes = length(pars$spp_index),
+                            nodes = nrow(pars),
                             cpus_per_node = 1,
                             slurm_options = list(partition = "short-serial-4hr", 
                                                  time = "03:59:59", 
@@ -160,10 +173,15 @@ names(res_out)
 # separate the moths and butterflies
 butt_out <- res_out[names(res_out) %in% butt_sp]
 moth_out <- res_out[names(res_out) %in% moth_sp]
+nfmoth_out <- res_out[names(res_out) %in% nfmoth_sp]
+
+# suffix to give the data
+suffix = gsub('-', '_', Sys.Date())
 
 # write outputs
-save(butt_out, file = paste0('butterfly_', pa_name, '.rdata'))
-save(moth_out, file = paste0('moth_', pa_name, '.rdata'))
+save(butt_out, file = paste0('butterfly_', pa_name, '_', suffix, '.rdata'))
+save(moth_out, file = paste0('moth_', pa_name, '_', suffix, '.rdata'))
+save(moth_out, file = paste0('nightflying_moth_', pa_name, '_', suffix, '.rdata'))
 
 # find the missing species
 missing_spp_butt <- butt_sp[!butt_sp %in% names(butt_out)]
@@ -171,6 +189,9 @@ missing_spp_butt
 
 missing_spp_moth <- moth_sp[!moth_sp %in% names(moth_out)]
 missing_spp_moth
+
+missing_spp_nf_moth <- nfmoth_sp[!nfmoth_sp %in% names(nfmoth_out)]
+missing_spp_nf_moth
 
 
 

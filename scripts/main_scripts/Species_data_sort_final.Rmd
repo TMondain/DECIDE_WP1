@@ -75,6 +75,7 @@ df <- subset(main_df, DT_ID == 1  & # start and end on same day
 ```
 
 
+## Day-flying moths
 
 ```{r, day_fliers}
 
@@ -177,6 +178,61 @@ if(Write){
             file = paste0('../../data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates_', suffix, '.csv'))
   
 }
+
+```
+
+
+## Night-flying moths
+
+```{r night_flyers}
+
+nf_df <- df[!df$sp_n %in% dfm,]
+
+
+# lat lon from grid refs
+ll <- gr_let2num(nf_df$TO_GRIDREF, centre = TRUE)
+head(nf_df)
+
+nf_df <- nf_df %>% 
+  mutate(lon = ll$EASTING,
+         lat = ll$NORTHING,
+         id = paste(sp_n, date, lon, lat, sep = "_")) ## create an id column for identifying duplicates of the same species from the same location on the same date)
+
+head(nf_df)
+
+```
+
+Save duplicated dataset
+
+```{r saving}
+
+
+if(Write){
+  
+  write.csv(nf_df, 
+            file = paste0('../../data/edited_insect_data/moth/NightFlyingMoths_EastNorths_with_duplicates_', suffix, '.csv'))
+  
+}
+
+
+```
+
+
+Remove duplicates of the same species on the same day
+
+```{r}
+
+
+nf_df_no_dups <- nf_df %>% 
+  distinct(sp_n, date, lon, lat, .keep_all = T) # use these columns to determine whether or not distinct
+
+if(Write){
+  
+  write.csv(nf_df_no_dups, 
+            file = paste0('../../data/edited_insect_data/moth/NightFlyingMoths_EastNorths_no_duplicates_', suffix, '.csv'))
+  
+}
+
 
 ```
 
