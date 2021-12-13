@@ -179,9 +179,9 @@ nfmoth_out <- res_out[names(res_out) %in% nfmoth_sp]
 suffix = gsub('-', '_', Sys.Date())
 
 # write outputs
-save(butt_out, file = paste0('butterfly_', pa_name, '_', suffix, '.rdata'))
-save(moth_out, file = paste0('moth_', pa_name, '_', suffix, '.rdata'))
-save(moth_out, file = paste0('nightflying_moth_', pa_name, '_', suffix, '.rdata'))
+save(butt_out, file = paste0('../../outputs/pseudoabsences/butterfly_', pa_name, '_', suffix, '.rdata'))
+save(moth_out, file = paste0('../../outputs/pseudoabsences/moth_', pa_name, '_', suffix, '.rdata'))
+save(nfmoth_out, file = paste0('../../outputs/pseudoabsences/nightflying_moth_', pa_name, '_', suffix, '.rdata'))
 
 # find the missing species
 missing_spp_butt <- butt_sp[!butt_sp %in% names(butt_out)]

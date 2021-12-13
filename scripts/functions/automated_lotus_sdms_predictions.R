@@ -9,13 +9,19 @@ library(tidyverse)
 #####     CHANGE FOR EACH RUN     #####
 
 # taxa
-taxa = 'butterfly' # moth, butterfly
+taxa = 'butterfly' # moth, butterfly, nightflying_moth
+
+# date records created 
+recs_date = "2021_12_06"
 
 ## choose model of interest
 model = c('lr', 'gam', 'rf', 'me')
 
 # pseudoabsence name
 pa_name = 'PA_thinned_10000nAbs'
+
+# pseudoabsence date
+pa_date_suffix = '2021_12_08'
 
 # number of bootstraps
 k = 10
@@ -40,12 +46,16 @@ mem_req = 40000
 if(taxa == 'moth'){
   
   ## for moths
-  dfm_df <- read_csv("data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates.csv")
+  dfm_df <- read_csv(paste0("data/edited_insect_data/moth/DayFlyingMoths_EastNorths_no_duplicates_", recs_date, ".csv"))
   
 } else if(taxa == 'butterfly'){
   
   ## for butterflies
-  dfm_df <- read_csv("data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates.csv")
+  dfm_df <- read_csv(paste0("data/edited_insect_data/butterfly/butterfly_EastNorths_no_duplicates_", recs_date, ".csv"))
+  
+} else if(taxa == 'nightflying_moth'){
+  
+  dfm_df <- read_csv(paste0("data/edited_insect_data/moth/NightFlyingMoths_EastNorths_no_duplicates_", recs_date, ".csv"))
   
 }
 
@@ -86,10 +96,13 @@ slurm_sdm_boot <- function(name_index) {
   # number of knots for gam
   knots_gam = file_for_lotus$knots_gam[name_index]
   
+  # date of pseudoabsence generation
+  pa_date_suffix = file_for_lotus$pa_date_suffix[name_index]
   
   
   # where to save at the end
-  outPath = paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/", taxa, "/SDM_Bootstrap_", model, "_", pa_name,"/")
+  outPath = paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/", taxa, "/SDM_Bootstrap_", model, "_", pa_name, "_", pa_date_suffix, "/")
+  dir.create(outPath, recursive = TRUE)
   
   # # load file with parameters
   # file_for_lotus = read.csv(paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/scripts/", taxa, "/_rslurm_", model, "_", pa_name, "/file_for_lotus.csv"))
@@ -99,15 +112,13 @@ slurm_sdm_boot <- function(name_index) {
   
   
   # load pseudoabsences based on taxa and name
-  if(taxa == 'moth'){
-    
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/moths/", taxa, '_', pa_name, ".rdata"))
-    
-  } else if(taxa == 'butterfly'){
-    
-    load(paste0("/home/users/thoval/DECIDE/data/species_data/butterflies/", taxa, '_', pa_name, ".rdata"))
-    ab1 <- res_out
-    
+  load(paste0("/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/pseudoabsences/", taxa, '_', pa_name, "_", pa_date_suffix, ".rdata"))
+  if(taxa == 'butterfly') {
+    ab1 <- butt_out
+  } else if(taxa == 'moth'){
+    ab1 <- moth_out
+  } else if(taxa == 'nightflying_moth') {
+    ab1 <- nfmoth_out
   }
   
   ## Find the species of interest
@@ -191,13 +202,15 @@ slurm_sdm_boot <- function(name_index) {
   
 }
 
+dir.create(paste0('scripts/lotus/', taxa, '/sdm_scripts/'), recursive = TRUE)
+
 # set working directory to correct taxa/location
 setwd(paste0('scripts/lotus/', taxa, '/sdm_scripts/'))
 
 #### slurm apply call
 sdm_slurm <- slurm_apply(slurm_sdm_boot,
                          params = pars,
-                         jobname = paste0(paste0(model, collapse = ''), '_', pa_name),
+                         jobname = paste0(taxa, paste0(model, collapse = ''), '_', pa_name, '_', pa_date_suffix),
                          nodes = dim(pars)[1],
                          cpus_per_node = 1,
                          slurm_options = list(partition = queue_name,
@@ -205,6 +218,7 @@ sdm_slurm <- slurm_apply(slurm_sdm_boot,
                                               mem = mem_req,
                                               error = paste0(paste(model, collapse = '_'),'_error-%j-%a.err')),
                          rscript_path = '',
+                         sh_template = "jasmin_submit_sh.txt",
                          submit = F)
 
 
@@ -213,6 +227,7 @@ file_for_lotus <- expand.grid(species = unique(dfm_df$sp_n),
                               model = model,
                               pa_name = pa_name,
                               k = k,
+                              pa_date_suffix = pa_date_suffix,
                               knots_gam = knots_gam)
 
 
@@ -228,7 +243,7 @@ file_for_lotus <- expand.grid(species = unique(dfm_df$sp_n),
 head(file_for_lotus)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_', paste0(model, collapse = ''), '_', pa_name, "/file_for_lotus.csv"))
+          file = paste0('_rslurm_', taxa, paste0(model, collapse = ''), '_', pa_name, '_', pa_date_suffix, "/file_for_lotus.csv"))
 
 
 
