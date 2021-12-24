@@ -9,8 +9,14 @@ library(rslurm)
 # pseudoabsence name (i.e. the model)
 pseudoabs_name = 'PA_thinned_10000nAbs'
 
+# date for models
+pa_date_suffix = "2021_12_08"
+
+# date for records
+recs_date_suffix = '2021_12_06'
+
 # Combine SD method (to be  tagged onto pseudo abs name)
-sd_comb = 'max_score' # or 'mean_score' or ''
+sd_comb = 'mean_score' # or 'mean_score' or ''
 
 # decide score method
 method = 'var_only' #c('sqroot_var_preds', 'equal_weighting', 'sqroot_preds_var', 'var_only') # 'var_sqroot_preds', 'equal_weighting', 'preds_sqroot_var', 'var_only'
@@ -25,7 +31,7 @@ main_dir = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs/'
 weight_record = 'time_since' # NULL if no weighting by records is desired
 
 # taxa
-taxa = c('moth', 'butterfly')
+taxa = 'nightflying_moth' # c('moth', 'butterfly', 'nightflying_moth')
 
 # parameter file
 pars = data.frame(index = 1:(length(method) * length(comb_method) * length(taxa)))
@@ -34,7 +40,6 @@ decide_score <- function(index){
   
   require(raster)
   require(tidyverse)
-  # require(sf)
   require(lubridate)
   require(sp)
   
@@ -51,10 +56,14 @@ decide_score <- function(index){
   method = file_for_lotus$method[index]
   comb_method = file_for_lotus$comb_method[index]
   weight_record = file_for_lotus$weight_record[index]
+  recs_date_suffix = file_for_lotus$recs_date_suffix[index]
+  pa_date_suffix = file_for_lotus$pa_date_suffix[index]
   
   ## load in species
   # get names
-  fls <- paste0(main_dir, taxa,'/combined_model_outputs/',pseudoabs_name)
+  fls <- paste0(main_dir, taxa,'/combined_model_outputs/', pseudoabs_name, '_', pa_date_suffix)
+  
+  print('!! stacking rasters')
   
   # predictions
   preds <- raster::stack(list.files(fls, 
@@ -66,11 +75,12 @@ decide_score <- function(index){
                                   pattern = paste0(sd_comb, '_weightedvariationensemble.grd'), 
                                   full.names = T))
   
+  print('!! calculating decide score')
   
   ## combine them together to create decide score
   if(method == 'sqroot_var_preds'){
     dec_spp <- preds*sqrt(var)
-  } else if(method =='equal_weighting') {
+  } else if(method =='equal_weighting'){
     dec_spp <- preds*var
   } else if(method == 'sqroot_preds_var'){
     dec_spp <- sqrt(preds)*var
@@ -90,18 +100,25 @@ decide_score <- function(index){
   ## weight the DECIDE score by records
   if(!is.null(weight_record)){
     
+    print('!! loading records')
+    
     # load records
     if(taxa == 'moth'){
       
       # this being hard-coded is bad!!!
-      dfm_full <- read.csv('/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates.csv')
+      dfm_full <- read.csv(paste0("/home/users/thoval/DECIDE/data/species_data/DayFlyingMoths_EastNorths_no_duplicates_", recs_date_suffix, ".csv"))
       
     } else if(taxa == 'butterfly'){
       
       # this being hard-coded is bad!!!
-      dfm_full <- read.csv('/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_no_duplicates.csv')
+      dfm_full <- read.csv(paste0("/home/users/thoval/DECIDE/data/species_data/butterfly_EastNorths_with_duplicates_", recs_date_suffix, ".csv"))
       
-    } else { stop('!! Only coded for butterflies and moths !!')}
+    } else if(taxa == 'nightflying_moth') {
+      
+      dfm_full <- read.csv(paste0("/home/users/thoval/DECIDE/data/species_data/NightFlyingMoths_EastNorths_no_duplicates_", recs_date_suffix, ".csv"))
+      
+    } else { stop('!! Only coded for butterflies and moths !!') }
+    
     
     # simplify dataframe
     dfm <- dfm_full %>% 
@@ -113,7 +130,7 @@ decide_score <- function(index){
     
     ## weight the records
     
-    ### Function to create the weighting layer
+    ### Function to create the weighting layer - stupid doing this for each lotus run - needless extra time
     count_records <- function(records_df, # sf object or data frame/data table of record counts
                               template_raster, # raster that you want the counts to be aggregated by
                               Coords = 27700, 
@@ -136,6 +153,8 @@ decide_score <- function(index){
       } else { stop('!! records_df must be class sf or data.frame') }
       
       if(weight_by_time){
+        
+        print('!! summarising records for weight by time') 
         
         record_weights <- record_counts %>% 
           group_by(lon, lat) %>% 
@@ -194,11 +213,15 @@ decide_score <- function(index){
     # weight by time since last record or raw number of records (sightings unique to each day)
     if(weight_record == 'time_since'){
       
+      print('!! counting records using time since method')
+      
       rec_counts <- count_records(records_df = dfm, 
                                   template_raster = decide,
                                   weight_by_time = TRUE)
       
     } else if(weight_record == 'number_record'){
+      
+      print('!! counting records total numbers')
       
       rec_counts <- count_records(records_df = dfm, 
                                   template_raster = decide,
@@ -249,6 +272,7 @@ decide_score <- function(index){
       
     }
     
+    print('!! smoothing the effort layer')
     
     # do the smoothing
     sr <- smooth_recording(weighted_layer = decide,
@@ -259,9 +283,11 @@ decide_score <- function(index){
     
   }
   
+  print('!! saving')
+  
   ## write single raster 
   writeRaster(x = decide, 
-              filename = paste0(main_dir, 'decide_scores/outputs/', taxa, '_',  pseudoabs_name, '_', sd_comb, '_decide_score_', method, '_', comb_method, '_', weight_record, '.grd'),
+              filename = paste0(main_dir, 'decide_scores/outputs/', taxa, '_',  pseudoabs_name, '_', pa_date_suffix, '_', sd_comb, '_decide_score_', method, '_', comb_method, '_', weight_record, '.grd'),
               format = 'raster', overwrite = T)
   
 }
@@ -272,28 +298,24 @@ setwd(paste0('scripts/lotus/decide_scores/'))
 
 sdm_slurm <- slurm_apply(decide_score,
                          params = pars,
-                         jobname = paste0("decide_scores_", pseudoabs_name, '_', sd_comb, "_", paste(method, collapse = '_'), "_", comb_method, '_', weight_record),
+                         jobname = paste0("decide_scores_", paste(taxa, collapse = '_'), '_', pseudoabs_name, '_', pa_date_suffix, '_', sd_comb, "_", paste(method, collapse = '_'), "_", comb_method, '_', weight_record),
                          nodes = length(unique(pars$index)),
                          cpus_per_node = 1,
-                         slurm_options = list(partition = "test",
-                                              time = "01:20:00",
+                         slurm_options = list(partition = "long-serial",
+                                              time = "47:59:59",
                                               mem = "20000",
                                               output = paste0(paste(method, collapse = '_'),'_out-%j-%a.out'),
                                               error = paste0(paste(method, collapse = '_'),'_error-%j-%a.err')),
                          rscript_path = '',
+                         sh_template = "jasmin_submit_sh.txt",
                          submit = F)
 
-
-# # create file for lotus
-# file_for_lotus <- data.frame(taxa = c('moth', 'butterfly'),
-#                              pseudoabs_name = rep(pseudoabs_name, 2),
-#                              method = rep(method, 2), 
-#                              main_dir = rep(main_dir, 2),
-#                              comb_method = rep(comb_method, 2))
 
 # create file for lotus
 file_for_lotus <- expand.grid(taxa = taxa,
                               pseudoabs_name = pseudoabs_name,
+                              pa_date_suffix = pa_date_suffix,
+                              recs_date_suffix = recs_date_suffix,
                               sd_comb = sd_comb,
                               method = method, 
                               main_dir = main_dir,
@@ -301,4 +323,4 @@ file_for_lotus <- expand.grid(taxa = taxa,
                               weight_record = weight_record)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_decide_scores_', pseudoabs_name, '_', sd_comb, '_', paste(method, collapse = '_'), '_', comb_method, '_', weight_record, '/file_for_lotus.csv'))
+          file = paste0('_rslurm_decide_scores_', paste(taxa, collapse = '_'), '_', pseudoabs_name, '_', pa_date_suffix, '_', sd_comb, '_', paste(method, collapse = '_'), '_', comb_method, '_', weight_record, '/file_for_lotus.csv'))

@@ -10,28 +10,28 @@ library(rslurm)
 #####  Get parameters
 
 # taxa for slurm output and parameter loading
-taxa = 'butterfly'
+taxa = 'moth' # moth, butterfly, nightflying_moth
 pseudoabs_type = 'PA_thinned_10000nAbs'
 auc_cutoff = 0.75 ## just a suggestion - might need some thought (although AUC values so stupidly high might not be a problem until we're using a different score metric)
-sd_comb='max_score'
+sd_comb='mean_score'
+
+# pseudoabsence date
+pa_date_suffix = '2021_12_08'
+
 # models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
 
 # use the species names from the pseudoabsences
+load(paste0("outputs/pseudoabsences/", taxa, "_", pseudoabs_type, "_", pa_date_suffix, ".rdata"))
 
-if(taxa == 'moth'){
-  
-  ## for moths
-  load(paste0("scripts/lotus/moth/pseudoabsences/moth_", pseudoabs_type, ".rdata"))
-  pars <- data.frame(name_index = seq(1, length(names(ab1))))
-  species <- names(ab1)
-  
-} else if(taxa == 'butterfly'){
-  
-  ## for butterflies
-  load(paste0("scripts/lotus/butterfly/pseudoabsence_scripts/butterfly_", pseudoabs_type, ".rdata"))
-  pars <- data.frame(name_index = seq(1, length(names(res_out))))
-  species <- names(res_out)
-  
+if(taxa == 'butterfly') {
+  pars <- data.frame(name_index = seq(1, length(names(butt_out))))
+  species <- names(butt_out)
+} else if(taxa == 'moth'){
+  pars <- data.frame(name_index = seq(1, length(names(moth_out))))
+  species <- names(moth_out)
+} else if(taxa == 'nightflying_moth') {
+  pars <- data.frame(name_index = seq(1, length(names(nfmoth_out))))
+  species <- names(nfmoth_out)
 }
 
 ###   function
@@ -62,9 +62,13 @@ calculate_ensemble <- function(name_index) {
   # models to check
   models = c('lr', 'gam', 'rf', 'me') #, 'lrReg') ## lrReg hasn't worked for any species yet
   
+  # pseudoabsence date
+  pa_date_suffix = file_for_lotus$pa_date_suffix[name_index]
+  
   ## no need to change these unless changing directories
   main_directory = '/gws/nopw/j04/ceh_generic/thoval/DECIDE/SDMs/outputs'
-  output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/', pseudoabs_type,'/')
+  output_directory = paste0(main_directory, '/',taxa, '/combined_model_outputs/', pseudoabs_type, '_', pa_date_suffix, '/')
+  dir.create(output_directory)
   
   
   ### 2. setup storage for model loops
@@ -87,7 +91,7 @@ calculate_ensemble <- function(name_index) {
     
     ### first, check that the model for that species exists
     ### if it doesn't, skip to next model
-    {check_models <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
+    {check_models <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type, '_', pa_date_suffix), 
                                 pattern = paste0(names),
                                 full.names = TRUE)
     
@@ -104,7 +108,7 @@ calculate_ensemble <- function(name_index) {
     
     
     ### load the mean predictions
-    mp <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
+    mp <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type, '_', pa_date_suffix), 
                      pattern = paste0(names, "_meanpred.grd"),
                      full.names = TRUE)
     
@@ -113,7 +117,7 @@ calculate_ensemble <- function(name_index) {
     mod_pred_out[[m]] <- mod_preds
     
     ### load the quantile range
-    qr <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
+    qr <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type, '_', pa_date_suffix), 
                      pattern = paste0(names, "_quantilerange.grd"),
                      full.names = TRUE)
     
@@ -134,7 +138,7 @@ calculate_ensemble <- function(name_index) {
     
     
     ### load the auc values
-    aucval <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type), 
+    aucval <- list.files(paste0(main_directory, '/', taxa, '/SDM_Bootstrap_', models[m], '_', pseudoabs_type, '_', pa_date_suffix), 
                          pattern = paste0(names, "_AUC_values.csv"),
                          full.names = TRUE)
     
@@ -268,11 +272,11 @@ calculate_ensemble <- function(name_index) {
   ## save the outputs
   print("#####     Saving prediction raster     #####")
   writeRaster(x = wt_mean, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, "_weightedmeanensemble.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, '_', pa_date_suffix, "_", sd_comb, "_weightedmeanensemble.grd"),
               format = 'raster', overwrite = T)
   
   writeRaster(x = wt_qr, 
-              filename = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, "_weightedvariationensemble.grd"),
+              filename = paste0(output_directory, names, "_", pseudoabs_type, '_', pa_date_suffix, "_", sd_comb, "_weightedvariationensemble.grd"),
               format = 'raster', overwrite = T)
   
   # writeRaster(x = mod_quant_rnge, 
@@ -283,7 +287,7 @@ calculate_ensemble <- function(name_index) {
   # store models that failed
   error_out <- do.call('rbind', errored_models)
   write.csv(error_out, 
-            file = paste0(output_directory, names, "_", pseudoabs_type, "_", sd_comb, '_failed_models.csv'))
+            file = paste0(output_directory, names, "_", pseudoabs_type, '_', pa_date_suffix, "_", sd_comb, '_failed_models.csv'))
   
 }
 
@@ -295,7 +299,7 @@ setwd(paste0('scripts/lotus/', taxa, '/combine_models_scripts'))
 
 sdm_slurm <- slurm_apply(calculate_ensemble,
                          params = pars,
-                         jobname = paste0(taxa, "_", pseudoabs_type, "_", sd_comb, "_weighted_ensemble"),
+                         jobname = paste0(taxa, "_", pseudoabs_type, "_", pa_date_suffix, "_", sd_comb, "_weighted_ensemble"),
                          nodes = length(unique(pars$name_index)),
                          cpus_per_node = 1,
                          slurm_options = list(partition = "short-serial",
@@ -303,6 +307,7 @@ sdm_slurm <- slurm_apply(calculate_ensemble,
                                               mem = "30000",
                                               error = paste0('error_combinmod_', pseudoabs_type, "_", sd_comb,'-%j-%a.out')),
                          rscript_path = '',
+                         sh_template = "../sdm_scripts/jasmin_submit_sh.txt",
                          submit = F)
 
 
@@ -310,9 +315,10 @@ sdm_slurm <- slurm_apply(calculate_ensemble,
 file_for_lotus <- data.frame(species = gsub(pattern = ' ', replacement = '_', x = unique(species)),
                              taxa = rep(taxa, length = length(unique(species))),
                              pseudoabs_type = rep(pseudoabs_type, length = length(unique(species))),
+                             pa_date_suffix = pa_date_suffix,
                              auc_cutoff = rep(auc_cutoff, length = length(unique(species))),
                              sd_comb = rep(sd_comb, length = length(unique(species))))
 head(file_for_lotus)
 
 write.csv(file_for_lotus, 
-          file = paste0('_rslurm_', taxa, "_", pseudoabs_type, "_", sd_comb, "_weighted_ensemble", "/file_for_lotus.csv"))
+          file = paste0('_rslurm_', taxa, "_", pseudoabs_type, "_", pa_date_suffix, "_", sd_comb, "_weighted_ensemble", "/file_for_lotus.csv"))
