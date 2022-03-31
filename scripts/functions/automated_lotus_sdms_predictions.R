@@ -198,7 +198,7 @@ slurm_sdm_boot <- function(name_index) {
   save(model_output, file = paste0(outPath, model, "_SDMs_", species_name, 
                                    ".rdata"))
   
-  return(model_output)
+  # return(model_output)
   
 }
 
